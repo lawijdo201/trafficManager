@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 
@@ -16,10 +17,13 @@ import org.springframework.stereotype.Service;
 public class UserServiceImpl implements UserService {
 
     private final UserDAO userDAO;
+    private final BCryptPasswordEncoder encoder;
     private final Logger LOGGER = LoggerFactory.getLogger(UserServiceImpl.class);
 
     @Autowired
-    public UserServiceImpl(UserDAO userDAO) {this.userDAO = userDAO; }
+    public UserServiceImpl(UserDAO userDAO, BCryptPasswordEncoder encoder) {this.userDAO = userDAO;
+        this.encoder = encoder;
+    }
 
 
     @Override
@@ -34,7 +38,7 @@ public class UserServiceImpl implements UserService {
         //중복된것이 없으면 Entity 생성
        User user = User.builder()
                 .id(id)
-                .pw(pw)
+                .pw(encoder.encode(pw))
                 .name(name)
                 .email(email).build();
 
