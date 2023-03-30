@@ -2,7 +2,6 @@ package gwnucapstone.trafficmanager.service.Impl;
 
 
 import gwnucapstone.trafficmanager.data.dao.UserDAO;
-import gwnucapstone.trafficmanager.data.dto.UserLoginDTO;
 import gwnucapstone.trafficmanager.data.entity.User;
 import gwnucapstone.trafficmanager.exception.ErrorCode;
 import gwnucapstone.trafficmanager.exception.LoginException;
@@ -11,7 +10,6 @@ import gwnucapstone.trafficmanager.utils.JwtTokenProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
