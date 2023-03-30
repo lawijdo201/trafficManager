@@ -26,17 +26,13 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 
-    ///implementation 'org.hibernate.validator:hibernate-validator:6.1.3.Final'
-    ///implementation 'org.glassfish:jakarta.el:3.0.4'
 
     /*DB*/
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    //implementation 'mysql:mysql-connector-java:8.0.28'
     implementation group: 'org.mariadb.jdbc', name: 'mariadb-java-client', version: '3.1.2'
 
     /*validator*/
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    //implementation group: 'jakarta.validation', name: 'jakarta.validation-api', version: '3.0.2'
 
     // https://mvnrepository.com/artifact/org.springdoc/springdoc-openapi-starter-webmvc-ui
     implementation group: 'org.springdoc', name: 'springdoc-openapi-starter-webmvc-ui', version: '2.0.4'
@@ -45,7 +41,15 @@ dependencies {
 
     /*security*/
     implementation 'org.springframework.boot:spring-boot-starter-security:3.0.4'
-    //implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    // https://mvnrepository.com/artifact/org.springframework.security/spring-security-test
+    implementation group: 'org.springframework.security', name: 'spring-security-test'
+    implementation group: 'io.jsonwebtoken', name:'jjwt', version:'0.9.1'
+    implementation group: 'org.glassfish.jaxb', name: 'jaxb-runtime', version: '4.0.2'
+    // https://mvnrepository.com/artifact/javax.xml.bind/jaxb-api
+    implementation group: 'javax.xml.bind', name: 'jaxb-api', version: '2.3.1'
+
+
+
 }
 
 tasks.named('test') {

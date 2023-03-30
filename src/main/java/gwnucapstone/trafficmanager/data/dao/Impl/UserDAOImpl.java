@@ -6,6 +6,8 @@ import gwnucapstone.trafficmanager.data.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.Optional;
+
 
 @Service
 public class UserDAOImpl implements UserDAO {
@@ -19,9 +21,11 @@ public class UserDAOImpl implements UserDAO {
         userRepository.save(user);
     }
 
-  @Override
-    public boolean findMember(String name) {
-        return userRepository.existsByid(name);
-    }
+     @Override
+       public boolean findMember(String name) {
+            return userRepository.existsByid(name);
+        }
 
+    @Override
+    public Optional <User> findByid(String id) {return userRepository.findById(id); }
 }
