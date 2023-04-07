@@ -7,7 +7,10 @@ import java.util.Optional;
 
 public interface UserDAO {
     void saveMember(User user);
+
     boolean findMember(String name);
 
-    Optional <User> findByid(String id);
+    Optional<User> findByid(String id);
+
+    void deleteMember(String id);
 }

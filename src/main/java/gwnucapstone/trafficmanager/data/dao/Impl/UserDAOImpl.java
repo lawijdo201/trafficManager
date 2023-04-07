@@ -14,18 +14,27 @@ public class UserDAOImpl implements UserDAO {
     private final UserRepository userRepository;
 
     @Autowired
-    public UserDAOImpl(UserRepository userRepository) {this.userRepository = userRepository; }
+    public UserDAOImpl(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
 
     @Override
     public void saveMember(User user) {
         userRepository.save(user);
     }
 
-     @Override
-       public boolean findMember(String name) {
-            return userRepository.existsByid(name);
-        }
+    @Override
+    public boolean findMember(String name) {
+        return userRepository.existsByid(name);
+    }
 
     @Override
-    public Optional <User> findByid(String id) {return userRepository.findById(id); }
+    public Optional<User> findByid(String id) {
+        return userRepository.findById(id);
+    }
+
+    @Override
+    public void deleteMember(String id) {
+        userRepository.deleteById(id);
+    }
 }

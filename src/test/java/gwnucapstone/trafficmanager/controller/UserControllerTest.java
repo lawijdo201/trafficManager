@@ -69,7 +69,7 @@ class UserControllerTest {
     @Test
     @DisplayName("Success Login")
     @WithMockUser
-   void Login_success() throws Exception {
+    void Login_success() throws Exception {
         String id = "123";
         String password = "qweqwe";
         when(userService.login(any(), any()))
@@ -90,7 +90,7 @@ class UserControllerTest {
         String id = "123";
         String password = "qweqwe";
         when(userService.login(any(), any()))
-                .thenThrow(new LoginException(ErrorCode.ID_NOT_FOUND,""));
+                .thenThrow(new LoginException(ErrorCode.ID_NOT_FOUND, ""));
 
         mockMvc.perform(post("/api/users/loin")
                         .with(csrf())
@@ -107,7 +107,7 @@ class UserControllerTest {
         String id = "123";
         String password = "qweqwe";
         when(userService.login(any(), any()))
-                .thenThrow(new LoginException(ErrorCode.INVAILD_PASSWORD,""));
+                .thenThrow(new LoginException(ErrorCode.INVALID_PASSWORD, ""));
 
         mockMvc.perform(post("/api/users/loin")
                         .with(csrf())
