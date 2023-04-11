@@ -38,7 +38,7 @@ public class JwtTokenProvider {
     }
 
     // Token 생성
-    public String createToken(String id, String key) {
+    public String createToken(String id) {
         long tokenValidMillisecond = 1000 * 60 * 60L;
 
         LOGGER.info("[createToken] 토큰 생성 시작");

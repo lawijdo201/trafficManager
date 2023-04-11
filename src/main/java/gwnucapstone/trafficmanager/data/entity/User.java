@@ -13,6 +13,7 @@ import java.util.*;
 @AllArgsConstructor
 @Builder
 public class User implements UserDetails {
+
     @Id
     private String id;
 

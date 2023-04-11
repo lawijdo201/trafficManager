@@ -3,6 +3,7 @@ package gwnucapstone.trafficmanager.data.dao.Impl;
 import gwnucapstone.trafficmanager.data.dao.UserDAO;
 import gwnucapstone.trafficmanager.data.entity.User;
 import gwnucapstone.trafficmanager.data.repository.UserRepository;
+import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -36,5 +37,18 @@ public class UserDAOImpl implements UserDAO {
     @Override
     public void deleteMember(String id) {
         userRepository.deleteById(id);
+    }
+
+    @Override
+    @Transactional
+    public void updateMember(String id, String pw, String email) {
+        Optional<User> userOptional = userRepository.findById(id);
+
+        if (userOptional.isPresent()) {
+            User user = userOptional.get();
+            user.setPw(pw);
+            user.setEmail(email);
+            userRepository.save(user);
+        }
     }
 }

@@ -13,4 +13,6 @@ public interface UserDAO {
     Optional<User> findByid(String id);
 
     void deleteMember(String id);
+
+    void updateMember(String id, String pw, String email);
 }

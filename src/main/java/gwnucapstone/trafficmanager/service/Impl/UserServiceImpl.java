@@ -2,6 +2,7 @@ package gwnucapstone.trafficmanager.service.Impl;
 
 
 import gwnucapstone.trafficmanager.data.dao.UserDAO;
+import gwnucapstone.trafficmanager.data.dto.UserUpdateDTO;
 import gwnucapstone.trafficmanager.data.entity.User;
 import gwnucapstone.trafficmanager.exception.ErrorCode;
 import gwnucapstone.trafficmanager.exception.LoginException;
@@ -13,7 +14,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 
@@ -23,7 +28,6 @@ public class UserServiceImpl implements UserService {
     private final UserDAO userDAO;
     private final BCryptPasswordEncoder encoder;
     private final JwtTokenProvider jwtTokenProvider;
-    //@Value("${jwt.token.secret}")
     private final Logger LOGGER = LoggerFactory.getLogger(UserServiceImpl.class);
 
     @Autowired
@@ -32,7 +36,6 @@ public class UserServiceImpl implements UserService {
         this.encoder = encoder;
         this.jwtTokenProvider = jwtTokenProvider;
     }
-
 
     @Override
     public void saveMember(String id, String pw, String name, String email) {
@@ -67,9 +70,8 @@ public class UserServiceImpl implements UserService {
             throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
         }
         //3. 토큰 생성후 return 하기
-        String Key = "1q2w3e4r";    //임시로..
         LOGGER.info("token start");
-        String token = jwtTokenProvider.createToken(id, Key);
+        String token = jwtTokenProvider.createToken(id);
         LOGGER.info("token : {}", token);
 
         return token;
@@ -81,7 +83,7 @@ public class UserServiceImpl implements UserService {
         if (jwtTokenProvider.validateToken(token)) {
             //토큰에서 id 추출
             String id = jwtTokenProvider.getUsername(token);
-            LOGGER.info("추출된 id: {}", id);
+            LOGGER.info("[deleteMember] 추출된 id: {}", id);
 
             // 회원이 존재하지 않으면 예외 발생
             User user = userDAO.findByid(id).orElseThrow(
@@ -98,5 +100,43 @@ public class UserServiceImpl implements UserService {
                 throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
             }
         }
+    }
+
+    @Override
+    public void updateMember(String token, UserUpdateDTO dto) {
+        // 토큰이 만료되지 않았으면
+        if (jwtTokenProvider.validateToken(token)) {
+            //토큰에서 id 추출
+            String id = jwtTokenProvider.getUsername(token);
+            LOGGER.info("[updateMember] 추출된 id: {}", id);
+
+            // 회원이 존재하지 않으면 예외 발생
+            User user = userDAO.findByid(id).orElseThrow(
+                    () -> new LoginException(ErrorCode.ID_NOT_FOUND, "해당 회원이 존재하지 않습니다.")
+            );
+            // 받아온 ID를 통해서 DB에 저장된 암호화된 PW 가져옴.
+            String originalPw = user.getPw();
+
+            // PW 비교
+            if (encoder.matches(dto.getInputPw(), originalPw)) {
+                userDAO.updateMember(id, encoder.encode(dto.getPw()), dto.getEmail());
+                LOGGER.info("[updateMember] 회원 정보 수정 완료");
+            } else {
+                throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
+            }
+        }
+    }
+
+    // 유효성 검사 핸들러
+    @Override
+    public Map<String, String> validateHandling(BindingResult bindingResult) {
+        Map<String, String> validatorResult = new HashMap<>();
+
+        for (FieldError error : bindingResult.getFieldErrors()) {
+            String validKeyName = String.format("valid_%s", error.getField());
+            validatorResult.put(validKeyName, error.getDefaultMessage());
+        }
+
+        return validatorResult;
     }
 }
