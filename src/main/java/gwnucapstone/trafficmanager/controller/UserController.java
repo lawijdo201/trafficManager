@@ -1,11 +1,10 @@
 package gwnucapstone.trafficmanager.controller;
 
-import gwnucapstone.trafficmanager.data.dto.UserJoinDTO;
-import gwnucapstone.trafficmanager.data.dto.UserLoginDTO;
-import gwnucapstone.trafficmanager.data.dto.UserUpdateDTO;
+import gwnucapstone.trafficmanager.data.dto.*;
+import gwnucapstone.trafficmanager.data.entity.User;
+import gwnucapstone.trafficmanager.service.EmailService;
 import gwnucapstone.trafficmanager.service.UserService;
 import jakarta.validation.Valid;
-import org.apache.coyote.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.Map;
 
 @RestController
@@ -21,10 +21,12 @@ public class UserController {
 
     private final Logger LOGGER = LoggerFactory.getLogger(UserController.class);
     private final UserService userService;
+    private final EmailService emailService;
 
     @Autowired
-    public UserController(UserService userService) {
+    public UserController(UserService userService, EmailService emailService) {
         this.userService = userService;
+        this.emailService = emailService;
     }
 
     @PostMapping(value = "/join")
@@ -65,5 +67,58 @@ public class UserController {
         userService.deleteMember(token, pw);
         LOGGER.info("[delete] 탈퇴 완료");
         return ResponseEntity.accepted().body("회원 탈퇴 되었습니다.");
+    }
+
+    @PostMapping(value = "/info")
+    public ResponseEntity<String> getInfo(@RequestHeader String token, @RequestBody String pw) {
+        LOGGER.info("[getInfo] 토큰: {}, 패스워드: {}", token, pw);
+        User user = userService.getUser(token, pw);
+        LOGGER.info("[getInfo] 회원 정보 조회 완료");
+        user.setPw("**********");
+        return ResponseEntity.ok().body(user.toString());
+    }
+
+    @PostMapping(value = "/findId")
+    public ResponseEntity<String> findId(@RequestBody FindIdDTO idDto) {
+        Map<String, String> response = new HashMap<>();
+        String name = idDto.getName();
+        String email = idDto.getEmail();
+        LOGGER.info("[findId] 이름: {}, 이메일: {}", name, email);
+        String id = userService.findUserId(name, email);
+        LOGGER.info("[findId] 찾은 아이디: {}", id);
+        if (id != null) {
+            MailDTO mailDto = emailService.createMessageForId(email, id, name);
+            emailService.sendEmail(mailDto);
+        } else {
+            LOGGER.info("[findId] 아이디 존재하지 않거나 이메일이 일치하지 않습니다.");
+            response.put("result", "failed");
+            response.put("msg", "not exists Id or not matches email");
+            return ResponseEntity.badRequest().body(response.toString());
+        }
+        LOGGER.info("[findId] 아이디 찾기 이메일 전송 완료");
+        response.put("result", "success");
+        return ResponseEntity.ok().body(response.toString());
+    }
+
+    @PostMapping(value = "/findPw")
+    public ResponseEntity<String> findPw(@RequestBody FindPwDTO pwDto) {
+        Map<String, String> response = new HashMap<>();
+        String id = pwDto.getId();
+        String name = pwDto.getName();
+        String email = pwDto.getEmail();
+        LOGGER.info("[findPw] 아이디: {}, 이메일: {}, 이름: {}", id, email, name);
+        String validatedId = userService.findUserId(name, email);
+        if (id.equals(validatedId)) {
+            MailDTO dto = emailService.createMessageForPw(email, validatedId, name);
+            emailService.sendEmail(dto);
+        } else {
+            LOGGER.info("[findPw] 아이디가 존재하지 않거나 이메일이 일치하지 않습니다.");
+            response.put("result", "failed");
+            response.put("msg", "not exists Id or not matches email");
+            return ResponseEntity.badRequest().body(response.toString());
+        }
+        LOGGER.info("[findId] 아이디 찾기 이메일 전송 완료");
+        response.put("result", "success");
+        return ResponseEntity.ok().body(response.toString());
     }
 }

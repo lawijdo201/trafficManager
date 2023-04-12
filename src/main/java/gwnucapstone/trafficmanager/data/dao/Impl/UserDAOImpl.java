@@ -39,6 +39,13 @@ public class UserDAOImpl implements UserDAO {
         userRepository.deleteById(id);
     }
 
+    /**
+     * 사용자 정보 업데이트 메서드
+     *
+     * @param id    사용자 아이디
+     * @param pw    현재 비밀번호
+     * @param email 사용자 이메일
+     */
     @Override
     @Transactional
     public void updateMember(String id, String pw, String email) {
@@ -50,5 +57,28 @@ public class UserDAOImpl implements UserDAO {
             user.setEmail(email);
             userRepository.save(user);
         }
+    }
+
+    /**
+     * 아이디, 비밀번호 찾기 시 이름과 이메일로 사용자 찾기
+     *
+     * @param name  사용자 이름
+     * @param email 사용자 이메일
+     * @return
+     */
+    @Override
+    public Optional<User> findByNameAndEmail(String name, String email) {
+        return userRepository.findByNameAndEmail(name, email);
+    }
+
+    /**
+     * 임시 비밀번호로 유저 정보 업데이트
+     *
+     * @param id 사용자 아이디
+     * @param pw 임시 비밀번호
+     */
+    @Override
+    public void updateUserPassword(String id, String pw) {
+        userRepository.updatePw(id, pw);
     }
 }

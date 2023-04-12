@@ -15,4 +15,8 @@ public interface UserDAO {
     void deleteMember(String id);
 
     void updateMember(String id, String pw, String email);
+
+    Optional<User> findByNameAndEmail(String name, String email);
+
+    void updateUserPassword(String pw, String id);
 }

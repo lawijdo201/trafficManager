@@ -1,7 +1,5 @@
 package gwnucapstone.trafficmanager.config;
 
-import gwnucapstone.trafficmanager.utils.JwtTokenProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -20,6 +18,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests((requests) -> requests
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/users/join", "/api/users/login", "/api/users/delete", "/api/users/update").permitAll()
+                        .requestMatchers("/api/users/findId", "/api/users/findPw", "/api/users/info").permitAll()
                         .requestMatchers("/swagger-ui.html").permitAll()
                         .anyRequest().authenticated()
                 )

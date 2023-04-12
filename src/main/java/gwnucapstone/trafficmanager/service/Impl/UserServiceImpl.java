@@ -77,57 +77,106 @@ public class UserServiceImpl implements UserService {
         return token;
     }
 
+    /**
+     * 수정, 탈퇴, 조회 시 필요한 유저 정보를 불러오는 메서드
+     *
+     * @param token 로그인 시 발급받은 토큰
+     * @param pw    현재 비밀번호
+     * @return User 객체
+     */
+    @Override
+    public User getUser(String token, String pw) {
+        // 토큰이 만료되지 않았으면
+        if (jwtTokenProvider.validateToken(token)) {
+            //토큰에서 id 추출
+            String id = jwtTokenProvider.getUsername(token);
+            LOGGER.info("[getUser] 추출된 id: {}", id);
+
+            // 회원이 존재하지 않으면 예외 발생
+            User user = userDAO.findByid(id).orElseThrow(
+                    () -> new LoginException(ErrorCode.ID_NOT_FOUND, "해당 회원이 존재하지 않습니다.")
+            );
+
+            if (encoder.matches(pw, user.getPassword())) {
+                return user;
+            } else {
+                LOGGER.info("[getUser] 패스워드가 일치하지 않습니다.");
+                throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
+            }
+        }
+        LOGGER.info("[getUser] 만료된 토큰입니다.");
+        return null;
+    }
+
+    /**
+     * 회원 탈퇴 메서드
+     *
+     * @param token 로그인 시 발급받은 토큰
+     * @param pw    인증을 위한 현재 비밀번호
+     */
     @Override
     public void deleteMember(String token, String pw) {
-        // 토큰이 만료되지 않았으면
-        if (jwtTokenProvider.validateToken(token)) {
-            //토큰에서 id 추출
-            String id = jwtTokenProvider.getUsername(token);
-            LOGGER.info("[deleteMember] 추출된 id: {}", id);
+        User user = getUser(token, pw);
 
-            // 회원이 존재하지 않으면 예외 발생
-            User user = userDAO.findByid(id).orElseThrow(
-                    () -> new LoginException(ErrorCode.ID_NOT_FOUND, "해당 회원이 존재하지 않습니다.")
-            );
-            // 받아온 ID를 통해서 DB에 저장된 암호화된 PW 가져옴.
-            String originalPw = user.getPw();
+        // 받아온 ID를 통해서 DB에 저장된 암호화된 PW 가져옴.
+        String id = user.getId();
+        String originalPw = user.getPw();
 
-            // PW 비교
-            if (encoder.matches(pw, originalPw)) {
-                userDAO.deleteMember(id);
-                SecurityContextHolder.clearContext();
-            } else {
-                throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
-            }
+        // PW 비교
+        if (encoder.matches(pw, originalPw)) {
+            userDAO.deleteMember(id);
+            SecurityContextHolder.clearContext();
+        } else {
+            throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
         }
     }
 
+    /**
+     * 유저 정보 업데이트 메서드
+     *
+     * @param token 로그인 시 발급받는 토큰
+     * @param dto   현재 비밀번호, 변경할 비밀번호, 변경할 이메일
+     */
     @Override
     public void updateMember(String token, UserUpdateDTO dto) {
-        // 토큰이 만료되지 않았으면
-        if (jwtTokenProvider.validateToken(token)) {
-            //토큰에서 id 추출
-            String id = jwtTokenProvider.getUsername(token);
-            LOGGER.info("[updateMember] 추출된 id: {}", id);
+        User user = getUser(token, dto.getInputPw());
 
-            // 회원이 존재하지 않으면 예외 발생
-            User user = userDAO.findByid(id).orElseThrow(
-                    () -> new LoginException(ErrorCode.ID_NOT_FOUND, "해당 회원이 존재하지 않습니다.")
-            );
-            // 받아온 ID를 통해서 DB에 저장된 암호화된 PW 가져옴.
-            String originalPw = user.getPw();
+        // 받아온 ID를 통해서 DB에 저장된 암호화된 PW 가져옴.
+        String id = user.getId();
+        String originalPw = user.getPw();
 
-            // PW 비교
-            if (encoder.matches(dto.getInputPw(), originalPw)) {
-                userDAO.updateMember(id, encoder.encode(dto.getPw()), dto.getEmail());
-                LOGGER.info("[updateMember] 회원 정보 수정 완료");
-            } else {
-                throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
-            }
+        // PW 비교
+        if (encoder.matches(dto.getInputPw(), originalPw)) {
+            userDAO.updateMember(id, encoder.encode(dto.getPw()), dto.getEmail());
+            LOGGER.info("[updateMember] 회원 정보 수정 완료");
+        } else {
+            throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
         }
     }
 
-    // 유효성 검사 핸들러
+
+    /**
+     * 아이디, 비밀번호 찾기 시 사용되는 유저 찾기
+     *
+     * @param name  사용자 이름
+     * @param email 사용자 이메일
+     * @return 유저 아이디
+     */
+    @Override
+    public String findUserId(String name, String email) {
+        Optional<User> userOptional = userDAO.findByNameAndEmail(name, email);
+
+        return userOptional.map(User::getId).orElse(null);
+    }
+
+
+    /**
+     * 회원 가입 시 사용되는 유효성 검사 핸들러
+     *
+     * @param bindingResult
+     * @return Map 형태의 유효성 검사 에러 메시지
+     * ex) valid_password="비밀번호는 8~16자리수여야 합니다. 영문 대소문자, 숫자, 특수문자를 1개 이상 포함해야 합니다."
+     */
     @Override
     public Map<String, String> validateHandling(BindingResult bindingResult) {
         Map<String, String> validatorResult = new HashMap<>();
@@ -136,7 +185,6 @@ public class UserServiceImpl implements UserService {
             String validKeyName = String.format("valid_%s", error.getField());
             validatorResult.put(validKeyName, error.getDefaultMessage());
         }
-
         return validatorResult;
     }
 }
