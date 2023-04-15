@@ -12,6 +12,8 @@ import gwnucapstone.trafficmanager.utils.JwtTokenProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -21,6 +23,7 @@ import org.springframework.validation.FieldError;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 
 
 @Service
@@ -30,12 +33,14 @@ public class UserServiceImpl implements UserService {
     private final BCryptPasswordEncoder encoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final Logger LOGGER = LoggerFactory.getLogger(UserServiceImpl.class);
+    private final RedisTemplate redisTemplate;
 
     @Autowired
-    public UserServiceImpl(UserDAO userDAO, BCryptPasswordEncoder encoder, JwtTokenProvider jwtTokenProvider) {
+    public UserServiceImpl(UserDAO userDAO, BCryptPasswordEncoder encoder, JwtTokenProvider jwtTokenProvider, RedisTemplate redisTemplate) {
         this.userDAO = userDAO;
         this.encoder = encoder;
         this.jwtTokenProvider = jwtTokenProvider;
+        this.redisTemplate = redisTemplate;
     }
 
     @Override
@@ -70,10 +75,14 @@ public class UserServiceImpl implements UserService {
         if (!encoder.matches(pw, user.get().getPw())) {
             throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
         }
-        //3. 토큰 생성후 return 하기
+        //3. 토큰 생성후 Refresh토큰 redis에 저장 후return 하기
         LOGGER.info("token start");
         UserResponseDTO userResponseDTO = jwtTokenProvider.createToken(id);
         LOGGER.info("Accesstoken : {}", userResponseDTO.getAccessToken());
+        LOGGER.info("{}의 RefreshToken Redis 저장",id);
+        ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
+        valueOperations.set(id, userResponseDTO.getRefreshToken(), userResponseDTO.getRefreshTokenExpirationTime(), TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit
+
         return userResponseDTO;
     }
 
