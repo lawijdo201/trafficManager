@@ -24,7 +24,6 @@ import java.util.Date;
 @RequiredArgsConstructor
 public class JwtTokenProvider {
 
-
     private final Logger LOGGER = LoggerFactory.getLogger(JwtTokenProvider.class);
     private UserDetailsServiceImpl userDetailsService;
 
@@ -85,12 +84,12 @@ public class JwtTokenProvider {
     public boolean validateToken(String token) {
         LOGGER.info("[validateToken] 토큰 유효 체크 시작");
         try {
-            Jws<Claims> claims = Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token);
-
-
-            return !claims.getBody().getExpiration().before(new Date());
+            Jws<Claims> claims = Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token);  //parse부분을 secretkey로 풀고 token부분을 파싱한다.
+            return !claims.getBody().getExpiration().before(new Date());  //그 부분의 body에 있는 expiration을 날짜와 체크, 만료시 true
         } catch (Exception e) {
+            Jws<Claims> claims = Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token);
             LOGGER.info("[validateToken] 토큰 유효 체크 예외 발생");
+            LOGGER.info("token:{}, NOW:{}",claims.getBody().getExpiration(),new Date());
             return false;
         }
     }
