@@ -40,9 +40,9 @@ public class UserController {
     }
 
     @PostMapping(value = "/login")
-    public ResponseEntity<String> login(@Valid @RequestBody UserLoginDTO dto) {
-        String token = userService.login(dto.getId(), dto.getPw());
-        return ResponseEntity.ok().body(token);
+    public UserResponseDTO login(@Valid @RequestBody UserLoginDTO dto) {
+        UserResponseDTO userResponseDTO = userService.login(dto.getId(), dto.getPw());
+        return userResponseDTO;
     }
 
     @PostMapping(value = "/update")

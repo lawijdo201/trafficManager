@@ -2,6 +2,7 @@ package gwnucapstone.trafficmanager.service.Impl;
 
 
 import gwnucapstone.trafficmanager.data.dao.UserDAO;
+import gwnucapstone.trafficmanager.data.dto.UserResponseDTO;
 import gwnucapstone.trafficmanager.data.dto.UserUpdateDTO;
 import gwnucapstone.trafficmanager.data.entity.User;
 import gwnucapstone.trafficmanager.exception.ErrorCode;
@@ -59,7 +60,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public String login(String id, String pw) {
+    public UserResponseDTO login(String id, String pw) {
         Optional<User> user = userDAO.findByid(id);
         //1. id가 없음
         user.orElseThrow(() -> new LoginException(ErrorCode.ID_NOT_FOUND, id + "는 없는 아이디입니다."));
@@ -71,10 +72,9 @@ public class UserServiceImpl implements UserService {
         }
         //3. 토큰 생성후 return 하기
         LOGGER.info("token start");
-        String token = jwtTokenProvider.createToken(id);
-        LOGGER.info("token : {}", token);
-
-        return token;
+        UserResponseDTO userResponseDTO = jwtTokenProvider.createToken(id);
+        LOGGER.info("Accesstoken : {}", userResponseDTO.getAccessToken());
+        return userResponseDTO;
     }
 
     /**

@@ -1,5 +1,6 @@
 package gwnucapstone.trafficmanager.utils;
 
+import gwnucapstone.trafficmanager.data.dto.UserResponseDTO;
 import gwnucapstone.trafficmanager.service.Impl.UserDetailsServiceImpl;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
@@ -26,6 +27,7 @@ public class JwtTokenProvider {
 
     private final Logger LOGGER = LoggerFactory.getLogger(JwtTokenProvider.class);
     private UserDetailsServiceImpl userDetailsService;
+    private UserResponseDTO userResponseDTO;
 
     @Value("${springboot.jwt.secret}")
     private String secretKey = "secretKey";
@@ -37,7 +39,7 @@ public class JwtTokenProvider {
     }
 
     // Token 생성
-    public String createToken(String id) {
+    public UserResponseDTO createToken(String id) {
         long tokenValidMillisecond = 1000 * 60 * 60L;
 
         LOGGER.info("[createToken] 토큰 생성 시작");
@@ -52,7 +54,23 @@ public class JwtTokenProvider {
                 .compact();
 
         LOGGER.info("[createToken] 토큰 생성 완료");
-        return token;
+
+        long tokenRefreshValidMillisecond = 1000 * 60 * 60 * 24 * 7L;
+
+        LOGGER.info("[RefreshToken] 토큰 생성 시작");
+        String refreshToken = Jwts.builder()
+                .setExpiration(new Date(System.currentTimeMillis() + tokenRefreshValidMillisecond))
+                .signWith(SignatureAlgorithm.HS256, secretKey)
+                .compact();
+
+        LOGGER.info("[RefreshToken] 토큰 생성 완료");
+        return userResponseDTO.builder()
+                .grantType("Bearer")
+                .accessToken(token)
+                .refreshToken(refreshToken)
+                .refreshTokenExpirationTime(tokenRefreshValidMillisecond)
+                .build();
+
     }
 
     // 토큰 인증 정보 조회
