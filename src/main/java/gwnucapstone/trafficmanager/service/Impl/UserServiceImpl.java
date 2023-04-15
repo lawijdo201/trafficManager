@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -81,10 +82,16 @@ public class UserServiceImpl implements UserService {
         LOGGER.info("Accesstoken : {}", userResponseDTO.getAccessToken());
         LOGGER.info("{}의 RefreshToken Redis 저장",id);
         ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
-        valueOperations.set(id, userResponseDTO.getRefreshToken(), userResponseDTO.getRefreshTokenExpirationTime(), TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit
+        valueOperations.set(id, userResponseDTO.getRefreshToken(), userResponseDTO.getRefreshTokenExpirationTime(), TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
 
         return userResponseDTO;
     }
+
+/*    @Override
+    public UserResponseDTO logout(String AccessToken, String RefreshToken){
+        Authentication authentication
+        return null;
+    }*/
 
     /**
      * 수정, 탈퇴, 조회 시 필요한 유저 정보를 불러오는 메서드

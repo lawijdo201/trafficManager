@@ -2,6 +2,8 @@ package gwnucapstone.trafficmanager.config;
 
 import gwnucapstone.trafficmanager.service.UserService;
 import gwnucapstone.trafficmanager.utils.JwtTokenProvider;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -9,6 +11,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -35,35 +38,46 @@ public class JwtFilter extends OncePerRequestFilter {
     /*ContextHolder에 토큰을 담아 유효한 토큰인지 체크*/
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        //헤더에서 토큰을 가져와서 토큰 유무 체크
+        //헤더에서 authorization 헤더를 가져와서 토큰 유무 체크
         final String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
         log.info("authorization : {}", authorization);
+
+        //만약 토큰이 없거나 "Bearer "로 시작하지 않는다면, 토큰에 문제가 있다는 로그를 출력하고, 다음 필터로 처리를 넘긴다.
         if(authorization == null || !authorization.startsWith("Bearer ")){//Bearer: jwt와 OAuth2.0인증 유형
             log.info("토큰에 문제가 있습니다.");
             filterChain.doFilter(request, response);
             return;
         }
-
-      ///Token꺼내기
+        String secretKey = "secretKey";
+        //토큰이 존재하고, "Bearer "로 시작한다면, 토큰을 추출하고 유효성 검사를 수행한다.
+        //토큰 추출
         String token = authorization.split(" ")[1]; //ex token :Bearer eysd~
 
-        //Token Expired 체크
-        if(!jwtTokenProvider.validateToken(token)) {
-            log.error("Token이 만료 되었습니다.");
+        //유효성검사 토큰이 유효하지 않다면, 토큰이 만료되었다는 로그를 출력하고, 다음 필터로 처리를 넘긴다.  //refresh토큰과 비교 구문 추가
+        if(jwtTokenProvider.validateToken(token)) {
+
+            log.error("토큰이 만료되었습니다.");
+            //임시로
+
+            //Authentication authentication = jwtTokenProvider.getAuthentication(token); 인증되지 않은 토큰을 getAuthentication시 runtimeexception
             filterChain.doFilter(request, response);
             return;
         }
 
+        //토큰이 유효하다면, 토큰에서 사용자 정보(id)를 추출하고, 해당 사용자의 권한을 설정하여 인증 객체를 생성한다.
         //id 꺼내기
+        //토큰이 만료되었을 시 SecurityContextHolder
         String id = jwtTokenProvider.getUsername(token);
         log.info("username : {} ",id);
-        //인증된 사용자만 사용할수있게 권한을 주는 작업
+        //인증된 사용자만 사용할수있게 "권한"을 주는 작업
         //authentication 생성, authorites = false
         UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(id, null, List.of(new SimpleGrantedAuthority("USER")));
         //위에서 생성한 객체에 request추가
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-        //SecurityContextHolder에 저장 -> 인증을 받은 후 저장, authorites = true인 상태
+
+        //인증 객체를 SecurityContextHolder에 저장하여 인증을 완료 -> 인증을 받은 후 저장, authorites = true인 상태
         SecurityContextHolder.getContext().setAuthentication(authentication);
+
         filterChain.doFilter(request, response);
     }
 }

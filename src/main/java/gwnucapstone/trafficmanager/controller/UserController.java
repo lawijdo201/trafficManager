@@ -4,11 +4,17 @@ import gwnucapstone.trafficmanager.data.dto.*;
 import gwnucapstone.trafficmanager.data.entity.User;
 import gwnucapstone.trafficmanager.service.EmailService;
 import gwnucapstone.trafficmanager.service.UserService;
+import gwnucapstone.trafficmanager.utils.JwtTokenProvider;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,10 +29,33 @@ public class UserController {
     private final UserService userService;
     private final EmailService emailService;
 
+    private final JwtTokenProvider jwtTokenProvider;
+    private final AuthenticationManagerBuilder authenticationManagerBuilder;
+
     @Autowired
-    public UserController(UserService userService, EmailService emailService) {
+    public UserController(UserService userService, EmailService emailService, JwtTokenProvider jwtTokenProvider, AuthenticationManagerBuilder authenticationManagerBuilder) {
         this.userService = userService;
         this.emailService = emailService;
+        this.jwtTokenProvider = jwtTokenProvider;
+        this.authenticationManagerBuilder = authenticationManagerBuilder;
+    }
+
+    @PostMapping("/authenticate")
+    public ResponseEntity<UserResponseDTO> authorize(@Valid @RequestBody UserLoginDTO loginDto) {
+
+        // 1. Login ID/PW 를 기반으로 AuthenticationToken 생성
+        UsernamePasswordAuthenticationToken authenticationToken =
+                new UsernamePasswordAuthenticationToken(loginDto.getId(), loginDto.getPw());
+
+        // 2. 실제로 검증 (사용자 비밀번호 체크) 이 이루어지는 부분
+        //    authenticate 메서드가 실행이 될 때 CustomUserDetailsService 에서 만들었던 loadUserByUsername 메서드가 실행됨
+        Authentication authentication = authenticationManagerBuilder.getObject().authenticate(authenticationToken);
+        SecurityContextHolder.getContext().setAuthentication(authentication);
+
+        // 3. 인증 정보를 기반으로 JWT 토큰 생성
+        UserResponseDTO jwt = jwtTokenProvider.generateToken(authentication);
+
+        return new ResponseEntity<>(jwt, HttpStatus.OK);
     }
 
     @PostMapping(value = "/join")
