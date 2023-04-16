@@ -10,6 +10,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.tomcat.util.http.parser.Authorization;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -59,11 +60,12 @@ public class JwtFilter extends OncePerRequestFilter {
         if(!jwtTokenProvider.validateToken(token)) {
             log.error("토큰이 만료되었습니다.");
             // 만료된 토큰인 경우 refresh token 이용
-
-/*            String refreshToken = request.getHeader(refreshToken);
+/*            String refreshToken = request.getHeader("refreshToken");
             log.error("유효성 검사");
-            if (jwtTokenProvider.validateToken(refreshToken)) {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            if (jwtTokenProvider.validateToken(refreshToken)||) {
                 // refresh token이 유효한 경우 새로운 access token과 refresh token 발급
+                String new Token = jwtTokenProvider.generateToken()
                 String newAccessToken = jwtTokenProvider.createToken(authentication.getName(), authentication.getAuthorities());
                 String newRefreshToken = jwtTokenProvider.createRefreshToken(authentication.getName(), authentication.getAuthorities());
 
@@ -88,12 +90,12 @@ public class JwtFilter extends OncePerRequestFilter {
         String id = jwtTokenProvider.getUsername(token);
         log.info("username : {} ",id);
         //인증된 사용자만 사용할수있게 "권한"을 주는 작업
-        //authentication 생성, authorites = false
-        UsernamePasswordAuthenticationToken authentication = new UsernamePasswordAuthenticationToken(id, null, List.of(new SimpleGrantedAuthority("USER")));
+        //authentication 생성
+        UsernamePasswordAuthenticationToken authentication = (UsernamePasswordAuthenticationToken) jwtTokenProvider.getAuthentication(token); //new UsernamePasswordAuthenticationToken(id, null, List.of(new SimpleGrantedAuthority("USER")));
         //위에서 생성한 객체에 request추가
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-        //인증 객체를 SecurityContextHolder에 저장하여 인증을 완료 -> 인증을 받은 후 저장, authorites = true인 상태
+        //인증 객체를 SecurityContextHolder에 저장하여 인증을 완료
         SecurityContextHolder.getContext().setAuthentication(authentication);
 
         filterChain.doFilter(request, response);

@@ -88,11 +88,11 @@ public class JwtTokenProvider {
 
         LOGGER.info("[createToken] 토큰 생성 시작");
         Claims claims = Jwts.claims();
-        claims.put("id", id);
+        claims.put("sub", id);
+        claims.put("auth","User");
 
         String token = Jwts.builder()
                 .setClaims(claims)
-                //.claim(AUTHORITIES_KEY, authorities)
                 .setIssuedAt(new Date(System.currentTimeMillis()))  //JWT가 발급된 시간
                 .setExpiration(new Date(System.currentTimeMillis() + tokenValidMillisecond))   //JWT의 만료 시간
                 .signWith(SignatureAlgorithm.HS256, secretKey)
