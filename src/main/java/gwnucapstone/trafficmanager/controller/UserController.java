@@ -5,10 +5,12 @@ import gwnucapstone.trafficmanager.data.entity.User;
 import gwnucapstone.trafficmanager.service.EmailService;
 import gwnucapstone.trafficmanager.service.UserService;
 import gwnucapstone.trafficmanager.utils.JwtTokenProvider;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -40,24 +42,6 @@ public class UserController {
         this.authenticationManagerBuilder = authenticationManagerBuilder;
     }
 
-    @PostMapping("/authenticate")
-    public ResponseEntity<UserResponseDTO> authorize(@Valid @RequestBody UserLoginDTO loginDto) {
-
-        // 1. Login ID/PW 를 기반으로 AuthenticationToken 생성
-        UsernamePasswordAuthenticationToken authenticationToken =
-                new UsernamePasswordAuthenticationToken(loginDto.getId(), loginDto.getPw());
-
-        // 2. 실제로 검증 (사용자 비밀번호 체크) 이 이루어지는 부분
-        //    authenticate 메서드가 실행이 될 때 CustomUserDetailsService 에서 만들었던 loadUserByUsername 메서드가 실행됨
-        Authentication authentication = authenticationManagerBuilder.getObject().authenticate(authenticationToken);
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-
-        // 3. 인증 정보를 기반으로 JWT 토큰 생성
-        UserResponseDTO jwt = jwtTokenProvider.generateToken(authentication);
-
-        return new ResponseEntity<>(jwt, HttpStatus.OK);
-    }
-
     @PostMapping(value = "/join")
     public ResponseEntity<String> join(@Valid @RequestBody UserJoinDTO dto, BindingResult bindingResult) {
         if (bindingResult.hasErrors()) {
@@ -69,9 +53,13 @@ public class UserController {
     }
 
     @PostMapping(value = "/login")
-    public UserResponseDTO login(@Valid @RequestBody UserLoginDTO dto) {
-        UserResponseDTO userResponseDTO = userService.login(dto.getId(), dto.getPw());
-        return userResponseDTO;
+    public ResponseEntity<String> login(@RequestBody UserLoginDTO dto) {
+        UserResponseDTO userResponseDTO = userService.login(dto.getId(), dto.getPw()); //response.setHeader("Authorization", "Bearer " + token);
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("AUTHORIZATION", userResponseDTO.getAUTHORIZATION());
+        headers.set("refreshToken", userResponseDTO.getRefreshToken());
+        headers.set("refreshTokenExpirationTime", Long.toString(userResponseDTO.getRefreshTokenExpirationTime()));
+        return ResponseEntity.ok().headers(headers).body("로그인에 성공했습니다.");
     }
 
     @PostMapping(value = "/update")

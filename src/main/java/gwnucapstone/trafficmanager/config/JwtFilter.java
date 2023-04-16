@@ -3,6 +3,7 @@ package gwnucapstone.trafficmanager.config;
 import gwnucapstone.trafficmanager.service.UserService;
 import gwnucapstone.trafficmanager.utils.JwtTokenProvider;
 import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -38,8 +39,9 @@ public class JwtFilter extends OncePerRequestFilter {
     /*ContextHolder에 토큰을 담아 유효한 토큰인지 체크*/
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+
         //헤더에서 authorization 헤더를 가져와서 토큰 유무 체크
-        final String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);
+        final String authorization = request.getHeader(HttpHeaders.AUTHORIZATION);  //HttpHeaders.AUTHORIZATION ResponseDTO에 headers.set(HttpHeaders.AUTHORIZATION, "Bearer abcdefg123456"); 나중에 Userresponsedto, response해더수정하기
         log.info("authorization : {}", authorization);
 
         //만약 토큰이 없거나 "Bearer "로 시작하지 않는다면, 토큰에 문제가 있다는 로그를 출력하고, 다음 필터로 처리를 넘긴다.
@@ -54,12 +56,28 @@ public class JwtFilter extends OncePerRequestFilter {
         String token = authorization.split(" ")[1]; //ex token :Bearer eysd~
 
         //유효성검사 토큰이 유효하지 않다면, 토큰이 만료되었다는 로그를 출력하고, 다음 필터로 처리를 넘긴다.  //refresh토큰과 비교 구문 추가
-        if(jwtTokenProvider.validateToken(token)) {
-
+        if(!jwtTokenProvider.validateToken(token)) {
             log.error("토큰이 만료되었습니다.");
-            //임시로
+            // 만료된 토큰인 경우 refresh token 이용
 
-            //Authentication authentication = jwtTokenProvider.getAuthentication(token); 인증되지 않은 토큰을 getAuthentication시 runtimeexception
+/*            String refreshToken = request.getHeader(refreshToken);
+            log.error("유효성 검사");
+            if (jwtTokenProvider.validateToken(refreshToken)) {
+                // refresh token이 유효한 경우 새로운 access token과 refresh token 발급
+                String newAccessToken = jwtTokenProvider.createToken(authentication.getName(), authentication.getAuthorities());
+                String newRefreshToken = jwtTokenProvider.createRefreshToken(authentication.getName(), authentication.getAuthorities());
+
+                // 새로운 토큰으로 SecurityContext 갱신
+                context.setAuthentication(jwtTokenProvider.getAuthentication(newAccessToken));
+
+                // 새로운 access token과 refresh token을 response header에 추가
+                response.setHeader("Authorization", "Bearer " + newAccessToken);
+                response.setHeader("Refresh-Token", newRefreshToken);
+            } else {
+                // refresh token도 만료된 경우, 로그아웃 처리 또는 다시 로그인 페이지로 리다이렉트 등의 처리
+                // ...
+            }*/
+
             filterChain.doFilter(request, response);
             return;
         }

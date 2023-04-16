@@ -76,10 +76,10 @@ public class UserServiceImpl implements UserService {
         if (!encoder.matches(pw, user.get().getPw())) {
             throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
         }
-        //3. 토큰 생성후 Refresh토큰 redis에 저장 후return 하기
+        //3. 토큰 생성후 Refresh토큰 redis에 저장 후 return 하기
         LOGGER.info("token start");
         UserResponseDTO userResponseDTO = jwtTokenProvider.createToken(id);
-        LOGGER.info("Accesstoken : {}", userResponseDTO.getAccessToken());
+        LOGGER.info("Accesstoken : {}", userResponseDTO.getAUTHORIZATION());
         LOGGER.info("{}의 RefreshToken Redis 저장",id);
         ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
         valueOperations.set(id, userResponseDTO.getRefreshToken(), userResponseDTO.getRefreshTokenExpirationTime(), TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)

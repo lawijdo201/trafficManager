@@ -46,6 +46,7 @@ public class JwtTokenProvider {
     }
 
 
+    //Authentication을 UserResponseDTO로
     public UserResponseDTO generateToken(Authentication authentication) {
         // 권한 가져오기
         String authorities = authentication.getAuthorities().stream()
@@ -69,9 +70,12 @@ public class JwtTokenProvider {
                 .signWith(SignatureAlgorithm.HS256, secretKey)
                 .compact();
 
+        StringBuffer sb = new StringBuffer();
+        sb.append(BEARER_TYPE);
+        sb.append(" ");
+        sb.append(accessToken);
         return UserResponseDTO.builder()
-                .grantType(BEARER_TYPE)
-                .accessToken(accessToken)
+                .AUTHORIZATION(sb.toString())
                 .refreshToken(refreshToken)
                 .refreshTokenExpirationTime(REFRESH_TOKEN_EXPIRE_TIME)
                 .build();
@@ -85,13 +89,6 @@ public class JwtTokenProvider {
         LOGGER.info("[createToken] 토큰 생성 시작");
         Claims claims = Jwts.claims();
         claims.put("id", id);
-
-        // 권한 가져오기
-/*
-        String authorities = authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.joining(","));
-*/
 
         String token = Jwts.builder()
                 .setClaims(claims)
@@ -112,9 +109,13 @@ public class JwtTokenProvider {
                 .compact();
 
         LOGGER.info("[RefreshToken] 토큰 생성 완료");
+        StringBuffer sb = new StringBuffer();
+        sb.append(BEARER_TYPE);
+        sb.append(" ");
+        sb.append(token);
         return userResponseDTO.builder()
-                .grantType("Bearer")
-                .accessToken(token)
+                //.grantType("Bearer")
+                .AUTHORIZATION(String.valueOf(sb))
                 .refreshToken(refreshToken)
                 .refreshTokenExpirationTime(tokenRefreshValidMillisecond)
                 .build();
@@ -161,22 +162,8 @@ public class JwtTokenProvider {
         try {
             //AccessToken검증
             Jws<Claims> claims = Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token);  //parse부분을 secretkey로 풀고 token부분을 파싱한다.
-            return claims.getBody().getExpiration().before(new Date());  //그 부분의 body에 있는 expiration을 날짜와 체크, 만료시 true
-
-            //만약 만료되었을 경우
-/*            if(check){
-                //RefreshToken과 비교추가
-                long tokenValidMillisecond = 1000 * 60 * 60L;
-                claims.setExpirationDate(token, new Date(tokenValidMillisecond));
-            }*/
-            //return !check;
+            return !claims.getBody().getExpiration().before(new Date());  //토큰의 expiration이 현제 날짜보다 지났으면 true
         } catch (Exception e) {
-            //임시로 토큰 만료시 기간 늘려줌, refresh토큰과 비교후 늘려주는것 구현예정
-            long tokenRefreshValidMillisecond = 1000 * 60 * 60 * 24 * 7L;
-            Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token).getBody().setExpiration(new Date(tokenRefreshValidMillisecond));
-            //Jws<Claims> claims = Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token);
-            //LOGGER.info("[validateToken] 토큰 유효 체크 예외 발생");
-            //LOGGER.info("token:{}, NOW:{}",claims.getBody().getExpiration(),new Date());
             return false;
         }
     }
