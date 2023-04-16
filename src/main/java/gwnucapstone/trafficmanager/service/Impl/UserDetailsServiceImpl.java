@@ -10,7 +10,6 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
-//필터로 인증할때 여기서 인증//
 @Service
 public class UserDetailsServiceImpl implements UserDetailsService {
 

@@ -46,42 +46,6 @@ public class JwtTokenProvider {
     }
 
 
-    //Authentication을 UserResponseDTO로
-    public UserResponseDTO generateToken(Authentication authentication) {
-        // 권한 가져오기
-        String authorities = authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .collect(Collectors.joining(","));
-
-        long now = (new Date()).getTime();
-        // Access Token 생성
-        Date accessTokenExpiresIn = new Date(now + ACCESS_TOKEN_EXPIRE_TIME);
-        String accessToken = Jwts.builder()
-                .setSubject(authentication.getName())
-                .claim("auth", "User")
-                .claim(AUTHORITIES_KEY, authorities)
-                .setExpiration(accessTokenExpiresIn)
-                .signWith(SignatureAlgorithm.HS256, secretKey)
-                .compact();
-
-        // Refresh Token 생성
-        String refreshToken = Jwts.builder()
-                .setExpiration(new Date(now + REFRESH_TOKEN_EXPIRE_TIME))
-                .signWith(SignatureAlgorithm.HS256, secretKey)
-                .compact();
-
-        StringBuffer sb = new StringBuffer();
-        sb.append(BEARER_TYPE);
-        sb.append(" ");
-        sb.append(accessToken);
-        return UserResponseDTO.builder()
-                .AUTHORIZATION(sb.toString())
-                .refreshToken(refreshToken)
-                .refreshTokenExpirationTime(REFRESH_TOKEN_EXPIRE_TIME)
-                .build();
-    }
-
-
     // Token 생성
     public UserResponseDTO createToken(String id) {
         long tokenValidMillisecond = 1000 * 60 * 60L;
@@ -119,11 +83,41 @@ public class JwtTokenProvider {
                 .refreshToken(refreshToken)
                 .refreshTokenExpirationTime(tokenRefreshValidMillisecond)
                 .build();
-
     }
 
+    public String createToken(String id, Collection<GrantedAuthority> authorities) {
+        long tokenValidMillisecond = 1000 * 60 * 60L;
+
+        LOGGER.info("[createToken] 인증된 사용자의 토큰이 만료되어 토큰 재생성 시작");
+        Claims claims = Jwts.claims();
+        claims.put("sub", id);
+        claims.put("auth","User");
+
+        String accesstoken = Jwts.builder()
+                .setClaims(claims)
+                .setIssuedAt(new Date(System.currentTimeMillis()))  //JWT가 발급된 시간
+                .setExpiration(new Date(System.currentTimeMillis() + tokenValidMillisecond))   //JWT의 만료 시간
+                .signWith(SignatureAlgorithm.HS256, secretKey)
+                .compact();
+
+        LOGGER.info("[createToken] 토큰 재생성 완료");
+        return accesstoken;
+    }
+
+    public String createRefreshToken(String id, Collection<GrantedAuthority> authorities) {
+        long tokenRefreshValidMillisecond = 1000 * 60 * 60 * 24 * 7L;
+
+        LOGGER.info("[RefreshToken] 인증된 사용자의 토큰이 만료되어 토큰 재생성 시작");
+        String refreshToken = Jwts.builder()
+                .setExpiration(new Date(System.currentTimeMillis() + tokenRefreshValidMillisecond))
+                .signWith(SignatureAlgorithm.HS256, secretKey)
+                .compact();
+
+        LOGGER.info("[RefreshToken] 토큰 생성 완료");
+        return refreshToken;
+    }
     // 토큰 인증 정보 조회
-    public Authentication getAuthentication(String token) {
+    public UsernamePasswordAuthenticationToken getAuthentication(String token) {
         // 토큰 복호화 및 claims 추출
         Claims claims = parseClaims(token);
 
@@ -138,14 +132,14 @@ public class JwtTokenProvider {
                         .collect(Collectors.toList());
 
         // UserDetails 객체를 만들어서 Authentication 리턴
-        UserDetails principal = new User(claims.getSubject(), "", authorities);
+        UserDetails principal = new User(claims.getSubject(), "", authorities);     //Spring Security에 있는 User, 스프링 시큐리티 버전 사용자 정보 저장용
         return new UsernamePasswordAuthenticationToken(principal, "", authorities);
     }
 
     // 토큰 기반 회원 구별 정보 추출
     public String getUsername(String token) {
         LOGGER.info("[getUsername] 토큰 기반 회원 구별 정보 추출");
-        String info = (String) Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token).getBody().get("id");
+        String info = (String) Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token).getBody().get("sub");
         LOGGER.info("[getUsername] 토큰 기반 회원 구별 정보 완료, {}", info);
         return info;
     }

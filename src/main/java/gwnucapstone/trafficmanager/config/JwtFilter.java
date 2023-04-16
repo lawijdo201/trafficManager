@@ -12,9 +12,11 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.tomcat.util.http.parser.Authorization;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -22,6 +24,7 @@ import org.springframework.http.HttpHeaders;
 import java.io.IOException;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 //@RequiredArgsConstructor
 @Slf4j
@@ -60,38 +63,47 @@ public class JwtFilter extends OncePerRequestFilter {
         if(!jwtTokenProvider.validateToken(token)) {
             log.error("토큰이 만료되었습니다.");
             // 만료된 토큰인 경우 refresh token 이용
-/*            String refreshToken = request.getHeader("refreshToken");
+            String refreshToken = request.getHeader("refreshToken");
             log.error("유효성 검사");
-            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-            if (jwtTokenProvider.validateToken(refreshToken)||) {
+            UsernamePasswordAuthenticationToken authentication = jwtTokenProvider.getAuthentication(token);
+            log.error("refresh토큰이 만료되지 않았으면1");
+            if (!jwtTokenProvider.validateToken(refreshToken)) {
+                log.error("refresh토큰이 만료되지 않았으면");
                 // refresh token이 유효한 경우 새로운 access token과 refresh token 발급
-                String new Token = jwtTokenProvider.generateToken()
                 String newAccessToken = jwtTokenProvider.createToken(authentication.getName(), authentication.getAuthorities());
                 String newRefreshToken = jwtTokenProvider.createRefreshToken(authentication.getName(), authentication.getAuthorities());
-
+                SecurityContext context = SecurityContextHolder.getContext();
                 // 새로운 토큰으로 SecurityContext 갱신
                 context.setAuthentication(jwtTokenProvider.getAuthentication(newAccessToken));
 
+                //redis에 refreshToken 저장
+               /* ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
+                valueOperations.set(id, userResponseDTO.getRefreshToken(), userResponseDTO.getRefreshTokenExpirationTime(), TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)*/
                 // 새로운 access token과 refresh token을 response header에 추가
+                log.error("헤더에 추가");
+                long tokenRefreshValidMillisecond = 1000 * 60 * 60 * 24 * 7L;
+                //
                 response.setHeader("Authorization", "Bearer " + newAccessToken);
-                response.setHeader("Refresh-Token", newRefreshToken);
+                response.setHeader("refreshToken", newRefreshToken);
+                response.setHeader("refreshTokenExpirationTime",Long.toString(tokenRefreshValidMillisecond));
+                response.setHeader("changeAuthorization","true");
             } else {
-                // refresh token도 만료된 경우, 로그아웃 처리 또는 다시 로그인 페이지로 리다이렉트 등의 처리
-                // ...
-            }*/
+                // refresh token도 만료된 경우
+                // 로그아웃 처리 또는 다시 로그인 페이지로 리다이렉트 등의 처리
+            }
 
             filterChain.doFilter(request, response);
             return;
         }
 
+        response.setHeader("ChangeAuthorization","false");
         //토큰이 유효하다면, 토큰에서 사용자 정보(id)를 추출하고, 해당 사용자의 권한을 설정하여 인증 객체를 생성한다.
         //id 꺼내기
         //토큰이 만료되었을 시 SecurityContextHolder
         String id = jwtTokenProvider.getUsername(token);
-        log.info("username : {} ",id);
         //인증된 사용자만 사용할수있게 "권한"을 주는 작업
         //authentication 생성
-        UsernamePasswordAuthenticationToken authentication = (UsernamePasswordAuthenticationToken) jwtTokenProvider.getAuthentication(token); //new UsernamePasswordAuthenticationToken(id, null, List.of(new SimpleGrantedAuthority("USER")));
+        UsernamePasswordAuthenticationToken authentication = jwtTokenProvider.getAuthentication(token); //new UsernamePasswordAuthenticationToken(id, null, List.of(new SimpleGrantedAuthority("USER")));
         //위에서 생성한 객체에 request추가
         authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
