@@ -90,6 +90,8 @@ public class JwtFilter extends OncePerRequestFilter {
             } else {
                 // refresh token도 만료된 경우
                 // 로그아웃 처리 또는 다시 로그인 페이지로 리다이렉트 등의 처리
+                SecurityContextHolder.clearContext();
+                //redis에 있는 refreshToken도 처리하기
             }
 
             filterChain.doFilter(request, response);
