@@ -4,22 +4,14 @@ import gwnucapstone.trafficmanager.data.dto.*;
 import gwnucapstone.trafficmanager.data.entity.User;
 import gwnucapstone.trafficmanager.service.EmailService;
 import gwnucapstone.trafficmanager.service.UserService;
-import gwnucapstone.trafficmanager.utils.JwtTokenProvider;
-import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -31,15 +23,11 @@ public class UserController {
     private final UserService userService;
     private final EmailService emailService;
 
-    private final JwtTokenProvider jwtTokenProvider;
-    private final AuthenticationManagerBuilder authenticationManagerBuilder;
 
     @Autowired
-    public UserController(UserService userService, EmailService emailService, JwtTokenProvider jwtTokenProvider, AuthenticationManagerBuilder authenticationManagerBuilder) {
+    public UserController(UserService userService, EmailService emailService) {
         this.userService = userService;
         this.emailService = emailService;
-        this.jwtTokenProvider = jwtTokenProvider;
-        this.authenticationManagerBuilder = authenticationManagerBuilder;
     }
 
     @PostMapping(value = "/join")
@@ -54,7 +42,7 @@ public class UserController {
 
     @PostMapping(value = "/login")
     public ResponseEntity<String> login(@RequestBody UserLoginDTO dto) {
-        UserResponseDTO userResponseDTO = userService.login(dto.getId(), dto.getPw()); //response.setHeader("Authorization", "Bearer " + token);
+        UserResponseDTO userResponseDTO = userService.login(dto.getId(), dto.getPw());
         HttpHeaders headers = new HttpHeaders();
         headers.set("AUTHORIZATION", userResponseDTO.getAUTHORIZATION());
         headers.set("refreshToken", userResponseDTO.getRefreshToken());
