@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -23,11 +25,13 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Date;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
 public class JwtTokenProvider {
+    public final long tokenRefreshValidMillisecond = 1000 * 60 * 60 * 24 * 7L;
     private static final String AUTHORITIES_KEY = "auth";
     private static final String BEARER_TYPE = "Bearer";
     private static final long ACCESS_TOKEN_EXPIRE_TIME = 30 * 60 * 1000L;              // 30분
@@ -35,6 +39,8 @@ public class JwtTokenProvider {
     private final Logger LOGGER = LoggerFactory.getLogger(JwtTokenProvider.class);
     private UserDetailsServiceImpl userDetailsService;
     private UserResponseDTO userResponseDTO;
+
+    private final RedisTemplate redisTemplate;
 
     @Value("${springboot.jwt.secret}")
     private String secretKey = "secretKey";
@@ -45,6 +51,21 @@ public class JwtTokenProvider {
         secretKey = Base64.getEncoder().encodeToString(secretKey.getBytes(StandardCharsets.UTF_8));
     }
 
+
+    public void setRedis(String id, UserResponseDTO dto){
+        ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
+        valueOperations.set(id, dto.getRefreshToken(), dto.getRefreshTokenExpirationTime(), TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
+    }
+
+    public void setRedis(String key, String value){
+        ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
+        valueOperations.set(key, value, tokenRefreshValidMillisecond, TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
+    }
+
+    public String  gerRedis(String key){
+        ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
+        return valueOperations.get(key);
+    }
 
     // Token 생성
     public UserResponseDTO createToken(String id) {
@@ -64,7 +85,6 @@ public class JwtTokenProvider {
 
         LOGGER.info("[createToken] 토큰 생성 완료");
 
-        long tokenRefreshValidMillisecond = 1000 * 60 * 60 * 24 * 7L;
 
         LOGGER.info("[RefreshToken] 토큰 생성 시작");
         String refreshToken = Jwts.builder()
@@ -114,6 +134,9 @@ public class JwtTokenProvider {
                 .compact();
 
         LOGGER.info("[RefreshToken] 토큰 생성 완료");
+
+        //redis에 저장
+        setRedis(id, refreshToken);
         return refreshToken;
     }
     // 토큰 인증 정보 조회

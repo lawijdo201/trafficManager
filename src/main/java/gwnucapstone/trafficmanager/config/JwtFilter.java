@@ -66,19 +66,23 @@ public class JwtFilter extends OncePerRequestFilter {
             String refreshToken = request.getHeader("refreshToken");
             log.error("유효성 검사");
             UsernamePasswordAuthenticationToken authentication = jwtTokenProvider.getAuthentication(token);
-            log.error("refresh토큰이 만료되지 않았으면1");
-            if (!jwtTokenProvider.validateToken(refreshToken)) {
+            log.error("refresh토큰이 만료되지 않았으면");
+
+
+            log.info("authentication.getName() {}, {}:",authentication.getName(), authentication.getAuthorities());
+            //jwtTokenProvider.
+            if (!jwtTokenProvider.validateToken(jwtTokenProvider.gerRedis(authentication.getName()))) {
                 log.error("refresh토큰이 만료되지 않았으면");
                 // refresh token이 유효한 경우 새로운 access token과 refresh token 발급
                 String newAccessToken = jwtTokenProvider.createToken(authentication.getName(), authentication.getAuthorities());
                 String newRefreshToken = jwtTokenProvider.createRefreshToken(authentication.getName(), authentication.getAuthorities());
+
+
                 SecurityContext context = SecurityContextHolder.getContext();
                 // 새로운 토큰으로 SecurityContext 갱신
                 context.setAuthentication(jwtTokenProvider.getAuthentication(newAccessToken));
 
-                //redis에 refreshToken 저장
-               /* ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
-                valueOperations.set(id, userResponseDTO.getRefreshToken(), userResponseDTO.getRefreshTokenExpirationTime(), TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)*/
+
                 // 새로운 access token과 refresh token을 response header에 추가
                 log.error("헤더에 추가");
                 long tokenRefreshValidMillisecond = 1000 * 60 * 60 * 24 * 7L;
@@ -91,7 +95,6 @@ public class JwtFilter extends OncePerRequestFilter {
                 // refresh token도 만료된 경우
                 // 로그아웃 처리 또는 다시 로그인 페이지로 리다이렉트 등의 처리
                 SecurityContextHolder.clearContext();
-                //redis에 있는 refreshToken도 처리하기
             }
 
             filterChain.doFilter(request, response);

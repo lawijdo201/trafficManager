@@ -81,8 +81,7 @@ public class UserServiceImpl implements UserService {
         UserResponseDTO userResponseDTO = jwtTokenProvider.createToken(id);
         LOGGER.info("Accesstoken : {}", userResponseDTO.getAUTHORIZATION());
         LOGGER.info("{}의 RefreshToken Redis 저장",id);
-        ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
-        valueOperations.set(id, userResponseDTO.getRefreshToken(), userResponseDTO.getRefreshTokenExpirationTime(), TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
+        jwtTokenProvider.setRedis(id, userResponseDTO);
 
         return userResponseDTO;
     }
