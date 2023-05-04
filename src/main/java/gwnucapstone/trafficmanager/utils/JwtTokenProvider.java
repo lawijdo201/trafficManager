@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class JwtTokenProvider {
     public final long tokenRefreshValidMillisecond = 1000 * 60 * 60 * 24 * 7L;
+    public final long tokenValidMillisecond = 1000 * 60 * 60L;
     private static final String AUTHORITIES_KEY = "auth";
     private static final String BEARER_TYPE = "Bearer";
     private static final long ACCESS_TOKEN_EXPIRE_TIME = 30 * 60 * 1000L;              // 30분
@@ -57,9 +58,16 @@ public class JwtTokenProvider {
         valueOperations.set(id, dto.getRefreshToken(), dto.getRefreshTokenExpirationTime(), TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
     }
 
-    public void setRedis(String key, String value){
+    public void setRefreshTokenInRedis(String key, String refreshValue){
         ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
-        valueOperations.set(key, value, tokenRefreshValidMillisecond, TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
+        //Refresh토큰 저장
+        valueOperations.set(key, refreshValue, tokenRefreshValidMillisecond, TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
+    }
+
+    public void setAccessTokenInRedes(String key, String accessValue){
+        ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
+        //Access토큰 저장
+        valueOperations.set("Acc " + key, accessValue, tokenValidMillisecond, TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
     }
 
     public String  gerRedis(String key){
@@ -67,9 +75,25 @@ public class JwtTokenProvider {
         return valueOperations.get(key);
     }
 
+    public void deleteRedis(String key){
+        //refresh토큰이 redis에 존재하면 삭제한다.
+        if(redisTemplate.opsForValue().get(key) !=null){
+            redisTemplate.delete(key);
+        }
+    }
+
+    public boolean isBlacklist(String key){
+        if(redisTemplate.hasKey(key)){
+            if(redisTemplate.opsForValue().get(key).equals("logout")){
+                return true;
+            }
+        }
+        return false;
+    }
+
+
     // Token 생성
     public UserResponseDTO createToken(String id) {
-        long tokenValidMillisecond = 1000 * 60 * 60L;
 
         LOGGER.info("[createToken] 토큰 생성 시작");
         Claims claims = Jwts.claims();
@@ -121,6 +145,8 @@ public class JwtTokenProvider {
                 .compact();
 
         LOGGER.info("[createToken] 토큰 재생성 완료");
+        //redis에 저장
+        setAccessTokenInRedes(id, accesstoken);
         return accesstoken;
     }
 
@@ -136,7 +162,7 @@ public class JwtTokenProvider {
         LOGGER.info("[RefreshToken] 토큰 생성 완료");
 
         //redis에 저장
-        setRedis(id, refreshToken);
+        setRefreshTokenInRedis(id, refreshToken);
         return refreshToken;
     }
     // 토큰 인증 정보 조회

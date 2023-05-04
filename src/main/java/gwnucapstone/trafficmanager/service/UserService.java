@@ -21,4 +21,6 @@ public interface UserService {
     String findUserId(String name, String email);
 
     Map<String, String> validateHandling(BindingResult bindingResult);
+
+    void logout(String id, String AccessToken);
 }

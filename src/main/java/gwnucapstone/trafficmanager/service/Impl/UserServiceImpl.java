@@ -2,6 +2,9 @@ package gwnucapstone.trafficmanager.service.Impl;
 
 
 import gwnucapstone.trafficmanager.data.dao.UserDAO;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import gwnucapstone.trafficmanager.data.dto.UserResponseDTO;
 import gwnucapstone.trafficmanager.data.dto.UserUpdateDTO;
 import gwnucapstone.trafficmanager.data.entity.User;
@@ -15,7 +18,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.validation.BindingResult;
@@ -80,12 +82,23 @@ public class UserServiceImpl implements UserService {
         LOGGER.info("token start");
         UserResponseDTO userResponseDTO = jwtTokenProvider.createToken(id);
         LOGGER.info("Accesstoken : {}", userResponseDTO.getAUTHORIZATION());
+
         LOGGER.info("{}의 RefreshToken Redis 저장",id);
         jwtTokenProvider.setRedis(id, userResponseDTO);
 
         return userResponseDTO;
     }
 
+    @Override
+    public void logout(String id, String AccessToken){
+        //redis에서 access토큰 블랙리스트 등록
+        long tokenValidMillisecond = 1000 * 60 * 60L;
+        String token = AccessToken.split(" ")[1]; //ex token :Bearer eysd~
+        redisTemplate.opsForValue().set(token, "logout", tokenValidMillisecond, TimeUnit.MILLISECONDS);
+        //redis에서 refresh 토큰 삭제
+        jwtTokenProvider.deleteRedis(id);
+        SecurityContextHolder.clearContext();
+    }
 
 /*    @Override
     public UserResponseDTO logout(String AccessToken, String RefreshToken){

@@ -50,6 +50,12 @@ public class UserController {
         return ResponseEntity.ok().headers(headers).body("로그인에 성공했습니다.");
     }
 
+    @PostMapping(value = "/logout")
+    public  ResponseEntity<String> logout(@RequestBody UserLogoutDTO dto){
+        //LOGGER.info("{}, {}",dto.getId(), dto.getToken());
+        userService.logout(dto.getId(), dto.getToken());
+        return ResponseEntity.ok().body("로그아웃 하였습니다.");
+    }
     @PostMapping(value = "/update")
     public ResponseEntity<String> update(@RequestHeader String token,
                                          @Valid @RequestBody UserUpdateDTO dto, BindingResult bindingResult) {

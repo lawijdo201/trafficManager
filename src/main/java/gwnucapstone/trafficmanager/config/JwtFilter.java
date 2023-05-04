@@ -5,6 +5,7 @@ import gwnucapstone.trafficmanager.utils.JwtTokenProvider;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.lang.Strings;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -12,6 +13,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.tomcat.util.http.parser.Authorization;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -33,6 +35,7 @@ public class JwtFilter extends OncePerRequestFilter {
     private final UserService userService;
 
     private final JwtTokenProvider jwtTokenProvider;
+
 
 
     public JwtFilter(UserService userService, JwtTokenProvider jwtTokenProvider) {
@@ -58,6 +61,14 @@ public class JwtFilter extends OncePerRequestFilter {
         //토큰이 존재하고, "Bearer "로 시작한다면, 토큰을 추출하고 유효성 검사를 수행한다.
         //토큰 추출
         String token = authorization.split(" ")[1]; //ex token :Bearer eysd~
+
+        Boolean checkBlacklist = jwtTokenProvider.isBlacklist(token);
+        if(checkBlacklist){
+            log.info("잘못된 접근입니다. 로그인을 해주세요.");
+            filterChain.doFilter(request, response);
+            return;
+        }
+
 
         //유효성검사 토큰이 유효하지 않다면, 토큰이 만료되었다는 로그를 출력하고, 다음 필터로 처리를 넘긴다.  //refresh토큰과 비교 구문 추가
         if(!jwtTokenProvider.validateToken(token)) {
@@ -114,6 +125,7 @@ public class JwtFilter extends OncePerRequestFilter {
 
         //인증 객체를 SecurityContextHolder에 저장하여 인증을 완료
         SecurityContextHolder.getContext().setAuthentication(authentication);
+        log.info("SecurityContext {}",SecurityContextHolder.getContext().getAuthentication().getName());
 
         filterChain.doFilter(request, response);
     }
