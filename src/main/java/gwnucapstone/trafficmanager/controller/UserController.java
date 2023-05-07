@@ -57,8 +57,9 @@ public class UserController {
         return ResponseEntity.ok().body("로그아웃 하였습니다.");
     }
     @PostMapping(value = "/update")
-    public ResponseEntity<String> update(@RequestHeader String token,
+    public ResponseEntity<String> update(@RequestHeader String AUTHORIZATION,
                                          @Valid @RequestBody UserUpdateDTO dto, BindingResult bindingResult) {
+        String token = AUTHORIZATION;
         LOGGER.info("[update] updateDto: {}", dto.toString());
         if (bindingResult.hasErrors()) {
             LOGGER.info("[update] 유효성 검사 실패");
@@ -73,7 +74,8 @@ public class UserController {
     }
 
     @DeleteMapping(value = "/delete")
-    public ResponseEntity<String> delete(@RequestHeader String token, @RequestBody String pw) {
+    public ResponseEntity<String> delete(@RequestHeader String AUTHORIZATION, @RequestBody String pw) {
+        String token = AUTHORIZATION;
         LOGGER.info("[delete] 토큰: {}, 패스워드: {}", token, pw);
         userService.deleteMember(token, pw);
         LOGGER.info("[delete] 탈퇴 완료");
@@ -81,7 +83,8 @@ public class UserController {
     }
 
     @PostMapping(value = "/info")
-    public ResponseEntity<String> getInfo(@RequestHeader String token, @RequestBody String pw) {
+    public ResponseEntity<String> getInfo(@RequestHeader String AUTHORIZATION, @RequestBody String pw) {
+        String token = AUTHORIZATION;
         LOGGER.info("[getInfo] 토큰: {}, 패스워드: {}", token, pw);
         User user = userService.getUser(token, pw);
         LOGGER.info("[getInfo] 회원 정보 조회 완료");
