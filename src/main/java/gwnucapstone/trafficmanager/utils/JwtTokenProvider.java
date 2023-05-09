@@ -12,13 +12,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
 import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.Authentication;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -70,7 +68,7 @@ public class JwtTokenProvider {
         valueOperations.set("Acc " + key, accessValue, tokenValidMillisecond, TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
     }
 
-    public String  gerRedis(String key){
+    public String  getRedis(String key){
         ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
         return valueOperations.get(key);
     }

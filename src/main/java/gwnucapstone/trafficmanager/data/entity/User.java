@@ -28,6 +28,7 @@ public class User implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
+        // 여기를 구현해야 할듯? 실행시 토큰에 문제가 있다고 나오는게 이거 때문인듯
         return null;
     }
 

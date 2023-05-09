@@ -1,5 +1,6 @@
 package gwnucapstone.trafficmanager.controller;
 
+import com.google.gson.JsonObject;
 import gwnucapstone.trafficmanager.data.dto.*;
 import gwnucapstone.trafficmanager.data.entity.User;
 import gwnucapstone.trafficmanager.service.EmailService;
@@ -12,7 +13,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
-import java.util.HashMap;
+
 import java.util.Map;
 
 @RestController
@@ -51,11 +52,12 @@ public class UserController {
     }
 
     @PostMapping(value = "/logout")
-    public  ResponseEntity<String> logout(@RequestBody UserLogoutDTO dto){
+    public ResponseEntity<String> logout(@RequestBody UserLogoutDTO dto) {
         //LOGGER.info("{}, {}",dto.getId(), dto.getToken());
         userService.logout(dto.getId(), dto.getToken());
         return ResponseEntity.ok().body("로그아웃 하였습니다.");
     }
+
     @PostMapping(value = "/update")
     public ResponseEntity<String> update(@RequestHeader String AUTHORIZATION,
                                          @Valid @RequestBody UserUpdateDTO dto, BindingResult bindingResult) {
@@ -94,7 +96,7 @@ public class UserController {
 
     @PostMapping(value = "/findId")
     public ResponseEntity<String> findId(@RequestBody FindIdDTO idDto) {
-        Map<String, String> response = new HashMap<>();
+        JsonObject response = new JsonObject();
         String name = idDto.getName();
         String email = idDto.getEmail();
         LOGGER.info("[findId] 이름: {}, 이메일: {}", name, email);
@@ -105,18 +107,18 @@ public class UserController {
             emailService.sendEmail(mailDto);
         } else {
             LOGGER.info("[findId] 아이디 존재하지 않거나 이메일이 일치하지 않습니다.");
-            response.put("result", "failed");
-            response.put("msg", "not exists Id or not matches email");
+            response.addProperty("result", "failed");
+            response.addProperty("msg", "not exists Id or not matches email");
             return ResponseEntity.badRequest().body(response.toString());
         }
         LOGGER.info("[findId] 아이디 찾기 이메일 전송 완료");
-        response.put("result", "success");
+        response.addProperty("result", "success");
         return ResponseEntity.ok().body(response.toString());
     }
 
     @PostMapping(value = "/findPw")
     public ResponseEntity<String> findPw(@RequestBody FindPwDTO pwDto) {
-        Map<String, String> response = new HashMap<>();
+        JsonObject response = new JsonObject();
         String id = pwDto.getId();
         String name = pwDto.getName();
         String email = pwDto.getEmail();
@@ -127,12 +129,12 @@ public class UserController {
             emailService.sendEmail(dto);
         } else {
             LOGGER.info("[findPw] 아이디가 존재하지 않거나 이메일이 일치하지 않습니다.");
-            response.put("result", "failed");
-            response.put("msg", "not exists Id or not matches email");
+            response.addProperty("result", "failed");
+            response.addProperty("msg", "not exists Id or not matches email");
             return ResponseEntity.badRequest().body(response.toString());
         }
         LOGGER.info("[findId] 아이디 찾기 이메일 전송 완료");
-        response.put("result", "success");
+        response.addProperty("result", "success");
         return ResponseEntity.ok().body(response.toString());
     }
 }

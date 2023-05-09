@@ -60,10 +60,11 @@ public class EmailServiceImpl implements EmailService {
     }
 
     /**
-     *비밀번호 찾기 메일 내용 빌드
+     * 비밀번호 찾기 메일 내용 빌드
+     *
      * @param email 수신자 이메일
-     * @param id 사용자 아이디
-     * @param name 사용자 이름
+     * @param id    사용자 아이디
+     * @param name  사용자 이름
      * @return 메일 내용 데이터(DTO)
      */
     @Override
@@ -80,6 +81,7 @@ public class EmailServiceImpl implements EmailService {
 
     /**
      * 비밀번호 찾기 요청 시 임시 비밀번호 발급을 위한 비밀번호 업데이트
+     *
      * @param pw 현재 패스워드
      * @param id 사용자 아이디
      */
@@ -91,6 +93,7 @@ public class EmailServiceImpl implements EmailService {
 
     /**
      * 무작위로 패스워드 생성 메서드
+     *
      * @return 임시 패스워드(String)
      */
     public String getTempPassword() {

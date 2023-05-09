@@ -39,6 +39,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/users/findId", "/api/users/findPw", "/api/users/info").permitAll()
                         //.requestMatchers("/api/vi/reviews").permitAll() //hasRole()
                         .requestMatchers("/api/users/authenticate").permitAll()
+                        .requestMatchers("/api/trans/**").permitAll()
                         .requestMatchers("/api/check").permitAll()
                         .requestMatchers("/swagger-ui.html").permitAll()
                         .anyRequest().authenticated()       //인증(SecurityContext Holder에 인증 완료된 상태로 저장)이 안된 authentication을 가진 요청은 모두 차단

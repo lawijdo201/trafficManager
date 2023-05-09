@@ -26,6 +26,14 @@ dependencies {
     annotationProcessor 'org.projectlombok:lombok'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 
+    /*JSON*/
+    implementation 'org.json:json:20200518'
+
+    /*GSON*/
+    implementation 'com.google.code.gson:gson:2.9.0'
+
+    /*WebClient*/
+    implementation group: 'org.springframework.boot', name: 'spring-boot-starter-webflux'
 
     /*DB*/
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
