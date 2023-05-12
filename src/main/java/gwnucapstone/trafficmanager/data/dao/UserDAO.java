@@ -18,5 +18,7 @@ public interface UserDAO {
 
     Optional<User> findByNameAndEmail(String name, String email);
 
+    boolean existsByNameAndEmail(String name, String email);
+
     void updateUserPassword(String pw, String id);
 }

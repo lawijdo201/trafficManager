@@ -22,16 +22,13 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.TextStyle;
-import java.util.HashMap;
 import java.util.Locale;
-import java.util.Map;
 
 @Service
 public class TransServiceImpl implements TransService {
 
     private final Logger LOGGER = LoggerFactory.getLogger(TransServiceImpl.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private Map<String, String> information = new HashMap<>();
 
     @Value("${springboot.api.odsay}")
     String odsay_key;
@@ -160,11 +157,11 @@ public class TransServiceImpl implements TransService {
                             String remainSt = ordkey.substring(2, 5);                             // 첫번째 도착예정 정류장 - 현재 정류장(3자리)
                             String lastStName = ordkey.substring(5, ordkey.length() - 1);         // 목적지 정류장
                             String btrainSttus = ordkey.substring(ordkey.length() - 1); // 급행여부(1자리)
+
                             if (!(btrainSttus.equals("0") || btrainSttus.equals("1"))) {
                                 lastStName += btrainSttus;
                                 btrainSttus = "";
                             }
-//                            LOGGER.info("[ordkey]: " + updnLine + " " + sequence + " " + remainSt + " " + lastStName + " " + btrainSttus);
 
                             if (subwayId.equals(lineNumber) && wayCode.equals(updnLine) && sequence.equals("1")) {
                                 btrainNo = item.at("/btrainNo").asText();            // 열차 번호
@@ -185,6 +182,8 @@ public class TransServiceImpl implements TransService {
                                 arrive.put("arvlMsg1", arvlMsg1);
                                 arrive.put("arvlMsg2", arvlMsg2);
                                 arrive.put("arvlCode", arvlCode);
+                                arrive.put("remainSt", remainSt);
+                                arrive.put("lastStName", lastStName);
 
                                 subPathObject.set("arrive", arrive);
 
@@ -198,6 +197,8 @@ public class TransServiceImpl implements TransService {
                                     congestion.put("congestionTrain", conResult.at("/congestionTrain").asText());
                                     congestion.put("congestionCar", conResult.at("/congestionCar").asText());
                                     subPathObject.set("congestion", congestion);
+                                } else {
+                                    /* 2, 3호선 제외한 나머지 호선 혼잡도 정보 추가 */
                                 }
                             }
                         }

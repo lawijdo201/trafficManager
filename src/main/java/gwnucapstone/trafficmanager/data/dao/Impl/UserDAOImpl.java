@@ -71,6 +71,11 @@ public class UserDAOImpl implements UserDAO {
         return userRepository.findByNameAndEmail(name, email);
     }
 
+    @Override
+    public boolean existsByNameAndEmail(String name, String email) {
+        return userRepository.existsByNameAndEmail(name, email);
+    }
+
     /**
      * 임시 비밀번호로 유저 정보 업데이트
      *

@@ -13,6 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.http.HttpHeaders;
+
 import java.io.IOException;
 
 //@RequiredArgsConstructor
@@ -22,7 +23,6 @@ public class JwtFilter extends OncePerRequestFilter {
     private final UserService userService;
 
     private final JwtTokenProvider jwtTokenProvider;
-
 
 
     public JwtFilter(UserService userService, JwtTokenProvider jwtTokenProvider) {
@@ -39,7 +39,7 @@ public class JwtFilter extends OncePerRequestFilter {
         log.info("authorization : {}", authorization);
 
         //만약 토큰이 없거나 "Bearer "로 시작하지 않는다면, 토큰에 문제가 있다는 로그를 출력하고, 다음 필터로 처리를 넘긴다.
-        if(authorization == null || !authorization.startsWith("Bearer ")){//Bearer: jwt와 OAuth2.0인증 유형
+        if (authorization == null || !authorization.startsWith("Bearer ")) {//Bearer: jwt와 OAuth2.0인증 유형
             log.info("토큰에 문제가 있습니다.");
             filterChain.doFilter(request, response);
             return;
@@ -50,15 +50,15 @@ public class JwtFilter extends OncePerRequestFilter {
         String token = authorization.split(" ")[1]; //ex token :Bearer eysd~
 
         Boolean checkBlacklist = jwtTokenProvider.isBlacklist(token);
-        if(checkBlacklist){
+        if (checkBlacklist) {
             log.info("잘못된 접근입니다. 로그인을 해주세요.");
-            filterChain.doFilter(request, response);
+            filterChain.doFilter(request, response);  // <---- 이 코드 때문에 잘못된 접근임에도 실행이 되는 듯? 지우니까 로그아웃 하고나서 토큰으로 다른 기능이 실행 안됨.
             return;
         }
 
 
         //유효성검사 토큰이 유효하지 않다면, 토큰이 만료되었다는 로그를 출력하고, 다음 필터로 처리를 넘긴다.  //refresh토큰과 비교 구문 추가
-        if(!jwtTokenProvider.validateToken(token)) {
+        if (!jwtTokenProvider.validateToken(token)) {
             log.error("토큰이 만료되었습니다.");
             // 만료된 토큰인 경우 refresh token 이용
             String refreshToken = request.getHeader("refreshToken");
@@ -67,7 +67,7 @@ public class JwtFilter extends OncePerRequestFilter {
             log.error("refresh토큰이 만료되지 않았으면");
 
 
-            log.info("authentication.getName() {}, {}:",authentication.getName(), authentication.getAuthorities());
+            log.info("authentication.getName() {}, {}:", authentication.getName(), authentication.getAuthorities());
             //jwtTokenProvider.
             if (!jwtTokenProvider.validateToken(jwtTokenProvider.getRedis(authentication.getName()))) {
                 log.error("refresh토큰이 만료되지 않았으면");
@@ -87,8 +87,8 @@ public class JwtFilter extends OncePerRequestFilter {
                 //
                 response.setHeader("Authorization", "Bearer " + newAccessToken);
                 response.setHeader("refreshToken", newRefreshToken);
-                response.setHeader("refreshTokenExpirationTime",Long.toString(tokenRefreshValidMillisecond));
-                response.setHeader("changeAuthorization","true");
+                response.setHeader("refreshTokenExpirationTime", Long.toString(tokenRefreshValidMillisecond));
+                response.setHeader("changeAuthorization", "true");
             } else {
                 // refresh token도 만료된 경우
                 // 로그아웃 처리 또는 다시 로그인 페이지로 리다이렉트 등의 처리
@@ -99,7 +99,7 @@ public class JwtFilter extends OncePerRequestFilter {
             return;
         }
 
-        response.setHeader("ChangeAuthorization","false");
+        response.setHeader("ChangeAuthorization", "false");
         //토큰이 유효하다면, 토큰에서 사용자 정보(id)를 추출하고, 해당 사용자의 권한을 설정하여 인증 객체를 생성한다.
         //id 꺼내기
         //토큰이 만료되었을 시 SecurityContextHolder
@@ -112,7 +112,7 @@ public class JwtFilter extends OncePerRequestFilter {
 
         //인증 객체를 SecurityContextHolder에 저장하여 인증을 완료
         SecurityContextHolder.getContext().setAuthentication(authentication);
-        log.info("SecurityContext {}",SecurityContextHolder.getContext().getAuthentication().getName());
+        log.info("SecurityContext {}", SecurityContextHolder.getContext().getAuthentication().getName());
 
         filterChain.doFilter(request, response);
     }

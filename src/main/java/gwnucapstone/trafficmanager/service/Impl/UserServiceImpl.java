@@ -1,6 +1,7 @@
 package gwnucapstone.trafficmanager.service.Impl;
 
 
+import com.google.gson.JsonObject;
 import gwnucapstone.trafficmanager.data.dao.UserDAO;
 import org.springframework.security.core.context.SecurityContextHolder;
 import gwnucapstone.trafficmanager.data.dto.UserResponseDTO;
@@ -19,8 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -43,11 +42,12 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void saveMember(String id, String pw, String name, String email) {
+    public boolean saveMember(String id, String pw, String name, String email) {
         //id 중복체크
-        if (userDAO.findMember(id)) {
+        if (userDAO.findMember(id) || userDAO.existsByNameAndEmail(name, email)) {
             LOGGER.info("if문 진입");
-            throw new LoginException(ErrorCode.ID_DUPLICATED, id + "아이디는 이미 있습니다.");
+            return false;
+//            throw new LoginException(ErrorCode.ID_DUPLICATED, id + "아이디는 이미 있습니다.");
         }
 
         LOGGER.info("[saveMember] User 생성 시작");
@@ -61,32 +61,40 @@ public class UserServiceImpl implements UserService {
         //DAO에 전달
         userDAO.saveMember(user);
         LOGGER.info("[saveMember] User 생성 완료");
+        return true;
     }
 
     @Override
     public UserResponseDTO login(String id, String pw) {
-        Optional<User> user = userDAO.findByid(id);
+//        Optional<User> user = userDAO.findByid(id);
+        User user = userDAO.findByid(id).orElse(null);
+
         //1. id가 없음
-        user.orElseThrow(() -> new LoginException(ErrorCode.ID_NOT_FOUND, id + "는 없는 아이디입니다."));
+//        user.orElseThrow(() -> new LoginException(ErrorCode.ID_NOT_FOUND, id + "는 없는 아이디입니다."));
+        if (user == null) {
+            return null;
+        }
 
         //2. passWord 틀림
-        LOGGER.info("getPw():{} pw:{}", pw, user.get().getPw());
-        if (!encoder.matches(pw, user.get().getPw())) {
-            throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
+        LOGGER.info("getPw():{} pw:{}", pw, user.getPw());
+        if (!encoder.matches(pw, user.getPw())) {
+            return null;
+//            throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
         }
+
         //3. 토큰 생성후 Refresh토큰 redis에 저장 후 return 하기
         LOGGER.info("token start");
         UserResponseDTO userResponseDTO = jwtTokenProvider.createToken(id);
         LOGGER.info("Accesstoken : {}", userResponseDTO.getAUTHORIZATION());
 
-        LOGGER.info("{}의 RefreshToken Redis 저장",id);
+        LOGGER.info("{}의 RefreshToken Redis 저장", id);
         jwtTokenProvider.setRedis(id, userResponseDTO);
 
         return userResponseDTO;
     }
 
     @Override
-    public void logout(String id, String AccessToken){
+    public void logout(String id, String AccessToken) {
         //redis에서 access토큰 블랙리스트 등록
         long tokenValidMillisecond = 1000 * 60 * 60L;
         String token = AccessToken.split(" ")[1]; //ex token :Bearer eysd~
@@ -111,6 +119,8 @@ public class UserServiceImpl implements UserService {
      */
     @Override
     public User getUser(String token, String pw) {
+        token = token.split(" ")[1];
+
         // 토큰이 만료되지 않았으면
         if (jwtTokenProvider.validateToken(token)) {
             //토큰에서 id 추출
@@ -118,15 +128,19 @@ public class UserServiceImpl implements UserService {
             LOGGER.info("[getUser] 추출된 id: {}", id);
 
             // 회원이 존재하지 않으면 예외 발생
-            User user = userDAO.findByid(id).orElseThrow(
-                    () -> new LoginException(ErrorCode.ID_NOT_FOUND, "해당 회원이 존재하지 않습니다.")
-            );
+            User user = userDAO.findByid(id).orElse(null);
 
-            if (encoder.matches(pw, user.getPassword())) {
-                return user;
+            LOGGER.info("[password]: " + pw);
+            if (user != null) {
+                if (encoder.matches(pw, user.getPw())) {
+                    return user;
+                } else {
+                    LOGGER.info("[getUser] 패스워드가 일치하지 않습니다.");
+                    return null;
+                }
             } else {
-                LOGGER.info("[getUser] 패스워드가 일치하지 않습니다.");
-                throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
+                LOGGER.info("[getUser] 해당 사용자는 존재하지 않습니다.");
+                return null;
             }
         }
         LOGGER.info("[getUser] 만료된 토큰입니다.");
@@ -140,19 +154,24 @@ public class UserServiceImpl implements UserService {
      * @param pw    인증을 위한 현재 비밀번호
      */
     @Override
-    public void deleteMember(String token, String pw) {
+    public boolean deleteMember(String token, String pw) {
         User user = getUser(token, pw);
 
-        // 받아온 ID를 통해서 DB에 저장된 암호화된 PW 가져옴.
-        String id = user.getId();
-        String originalPw = user.getPw();
+        if (user != null) {
+            // 받아온 ID를 통해서 DB에 저장된 암호화된 PW 가져옴.
+            String id = user.getId();
+            String originalPw = user.getPw();
 
-        // PW 비교
-        if (encoder.matches(pw, originalPw)) {
-            userDAO.deleteMember(id);
-            SecurityContextHolder.clearContext();
+            // PW 비교
+            if (encoder.matches(pw, originalPw)) {
+                userDAO.deleteMember(id);
+                SecurityContextHolder.clearContext();
+                return true;
+            } else {
+                return false;
+            }
         } else {
-            throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
+            return false;
         }
     }
 
@@ -163,19 +182,23 @@ public class UserServiceImpl implements UserService {
      * @param dto   현재 비밀번호, 변경할 비밀번호, 변경할 이메일
      */
     @Override
-    public void updateMember(String token, UserUpdateDTO dto) {
+    public boolean updateMember(String token, UserUpdateDTO dto) {
         User user = getUser(token, dto.getInputPw());
 
-        // 받아온 ID를 통해서 DB에 저장된 암호화된 PW 가져옴.
-        String id = user.getId();
-        String originalPw = user.getPw();
+        if (user != null) {
+            // 받아온 ID를 통해서 DB에 저장된 암호화된 PW 가져옴.
+            String id = user.getId();
+            String originalPw = user.getPw();
 
-        // PW 비교
-        if (encoder.matches(dto.getInputPw(), originalPw)) {
-            userDAO.updateMember(id, encoder.encode(dto.getPw()), dto.getEmail());
-            LOGGER.info("[updateMember] 회원 정보 수정 완료");
+            // PW 비교
+            if (encoder.matches(dto.getInputPw(), originalPw)) {
+                userDAO.updateMember(id, encoder.encode(dto.getPw()), dto.getEmail());
+                return true;
+            } else {
+                return false;
+            }
         } else {
-            throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
+            return false;
         }
     }
 
@@ -203,12 +226,12 @@ public class UserServiceImpl implements UserService {
      * ex) valid_password="비밀번호는 8~16자리수여야 합니다. 영문 대소문자, 숫자, 특수문자를 1개 이상 포함해야 합니다."
      */
     @Override
-    public Map<String, String> validateHandling(BindingResult bindingResult) {
-        Map<String, String> validatorResult = new HashMap<>();
+    public JsonObject validateHandling(BindingResult bindingResult) {
+        JsonObject validatorResult = new JsonObject();
 
         for (FieldError error : bindingResult.getFieldErrors()) {
             String validKeyName = String.format("valid_%s", error.getField());
-            validatorResult.put(validKeyName, error.getDefaultMessage());
+            validatorResult.addProperty(validKeyName, error.getDefaultMessage());
         }
         return validatorResult;
     }

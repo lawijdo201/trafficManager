@@ -50,45 +50,43 @@ public class JwtTokenProvider {
         secretKey = Base64.getEncoder().encodeToString(secretKey.getBytes(StandardCharsets.UTF_8));
     }
 
-
-    public void setRedis(String id, UserResponseDTO dto){
+    public void setRedis(String id, UserResponseDTO dto) {
         ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
         valueOperations.set(id, dto.getRefreshToken(), dto.getRefreshTokenExpirationTime(), TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
     }
 
-    public void setRefreshTokenInRedis(String key, String refreshValue){
+    public void setRefreshTokenInRedis(String key, String refreshValue) {
         ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
         //Refresh토큰 저장
         valueOperations.set(key, refreshValue, tokenRefreshValidMillisecond, TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
     }
 
-    public void setAccessTokenInRedes(String key, String accessValue){
+    public void setAccessTokenInRedes(String key, String accessValue) {
         ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
         //Access토큰 저장
         valueOperations.set("Acc " + key, accessValue, tokenValidMillisecond, TimeUnit.MILLISECONDS);   //key, value, timeout, timeunit(timeout단위)
     }
 
-    public String  getRedis(String key){
+    public String getRedis(String key) {
         ValueOperations<String, String> valueOperations = redisTemplate.opsForValue();
         return valueOperations.get(key);
     }
 
-    public void deleteRedis(String key){
+    public void deleteRedis(String key) {
         //refresh토큰이 redis에 존재하면 삭제한다.
-        if(redisTemplate.opsForValue().get(key) !=null){
+        if (redisTemplate.opsForValue().get(key) != null) {
             redisTemplate.delete(key);
         }
     }
 
-    public boolean isBlacklist(String key){
-        if(redisTemplate.hasKey(key)){
-            if(redisTemplate.opsForValue().get(key).equals("logout")){
+    public boolean isBlacklist(String key) {
+        if (redisTemplate.hasKey(key)) {
+            if (redisTemplate.opsForValue().get(key).equals("logout")) {
                 return true;
             }
         }
         return false;
     }
-
 
     // Token 생성
     public UserResponseDTO createToken(String id) {
@@ -96,7 +94,7 @@ public class JwtTokenProvider {
         LOGGER.info("[createToken] 토큰 생성 시작");
         Claims claims = Jwts.claims();
         claims.put("sub", id);
-        claims.put("auth","User");
+        claims.put("auth", "User");
 
         String token = Jwts.builder()
                 .setClaims(claims)
@@ -133,7 +131,7 @@ public class JwtTokenProvider {
         LOGGER.info("[createToken] 인증된 사용자의 토큰이 만료되어 토큰 재생성 시작");
         Claims claims = Jwts.claims();
         claims.put("sub", id);
-        claims.put("auth","User");
+        claims.put("auth", "User");
 
         String accesstoken = Jwts.builder()
                 .setClaims(claims)
@@ -163,6 +161,7 @@ public class JwtTokenProvider {
         setRefreshTokenInRedis(id, refreshToken);
         return refreshToken;
     }
+
     // 토큰 인증 정보 조회
     public UsernamePasswordAuthenticationToken getAuthentication(String token) {
         // 토큰 복호화 및 claims 추출
@@ -186,6 +185,7 @@ public class JwtTokenProvider {
     // 토큰 기반 회원 구별 정보 추출
     public String getUsername(String token) {
         LOGGER.info("[getUsername] 토큰 기반 회원 구별 정보 추출");
+        LOGGER.info("{}", token);
         String info = (String) Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token).getBody().get("sub");
         LOGGER.info("[getUsername] 토큰 기반 회원 구별 정보 완료, {}", info);
         return info;
@@ -203,7 +203,7 @@ public class JwtTokenProvider {
         try {
             //AccessToken검증
             Jws<Claims> claims = Jwts.parser().setSigningKey(secretKey).parseClaimsJws(token);  //parse부분을 secretkey로 풀고 token부분을 파싱한다.
-            return !claims.getBody().getExpiration().before(new Date());  //토큰의 expiration이 현제 날짜보다 지났으면 true
+            return !claims.getBody().getExpiration().before(new Date());  //토큰의 expiration이 현재 날짜보다 지났으면 true
         } catch (Exception e) {
             return false;
         }
