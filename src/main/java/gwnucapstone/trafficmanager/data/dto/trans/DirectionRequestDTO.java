@@ -1,4 +1,4 @@
-package gwnucapstone.trafficmanager.data.dto;
+package gwnucapstone.trafficmanager.data.dto.trans;
 
 import lombok.Data;
 import lombok.Getter;

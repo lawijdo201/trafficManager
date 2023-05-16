@@ -52,44 +52,45 @@ public class TransServiceImpl implements TransService {
         DayOfWeek day = today.getDayOfWeek();
         String shortDay = day.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).toUpperCase();
         String hour = Integer.toString(currentTime.getHour());
+        String detailMinute = Integer.toString(currentTime.getMinute());
         String minute = Integer.toString(currentTime.getMinute() - (currentTime.getMinute() % 10));
-        LOGGER.info("[getPathWithCongestion] minute : " + minute);
+        if (minute.equals("0")) {
+            minute += "0";
+        }
 
         // 출발지부터 목적지까지의 경로 추출
-        JsonNode rootNode1 = getResultPath(sx, sy, ex, ey);
-        JsonNode result = rootNode1.at("/result");
-        JsonNode paths = result.at("/path");
+        JsonNode result = getResultPath(sx, sy, ex, ey);
+        JsonNode paths = result.at("/result").at("/path");
         for (JsonNode path : paths) {
             JsonNode subPaths = path.at("/subPath");
-
             for (JsonNode subPath : subPaths) {
                 ObjectNode subPathObject = (ObjectNode) subPath;
-                String trafficType = subPath.at("/trafficType").asText();
+
+                // 3 -> 도보, 2 -> 버스, 1 -> 지하철
+                String trafficType = subPath.at("/trafficType").asText();                    // 교통수단 타입
                 String startName = subPath.at("/startName").asText();
+                String startLocalStationID = subPath.at("/startLocalStationID").asText();   // 버스 정류장 로컬 ID
 
-                String startLocalStationID = subPath.at("/startLocalStationID").asText();   // 정류소 로컬 ID
-                String startID = subPath.at("/startID").asText();                           // 정류소 ID
-
-                JsonNode lanes = subPath.at("/lane");
+                JsonNode lanes = subPath.at("/lane");                                       // 버스 or 지하철 정보 담고 있는 JSON
                 // 경로 중 버스
                 if (trafficType.equals("2")) {
+                    String startID = subPath.at("/startID").asText();
                     for (JsonNode lane : lanes) {
                         String busLocalBlID = lane.at("/busLocalBlID").asText();                // 버스 로컬 ID
                         String busID = lane.at("/busID").asText();                              // 버스 ID
 
-                        // 버스 ID와 정류소 ID를 사용하여 버스 순번 정보 받아옴.
+                        // 정류소 ID와 버스 ID를 사용하여 버스 순번 정보 받아옴.
                         JsonNode busArriveInfo = getBusInfo(startID, busID);
                         JsonNode realTimeInfo = busArriveInfo.at("/result").at("/real");
 
                         for (JsonNode real : realTimeInfo) {
-                            String stationSeq = real.at("/stationSeq").asText();
-                            // 위 출발 정류소 ID와 버스 ID, 버스 순번을 사용해서 혼잡도 정보와 도착 정보 추출
-                            JsonNode rootNode2 = getBusArriveInfo(startLocalStationID, busLocalBlID, stationSeq);
-                            JsonNode msgBody = rootNode2.at("/msgBody");
-                            JsonNode itemList = msgBody.at("/itemList");
+                            String stationSeq = real.at("/stationSeq").asText();            // 버스 순번
+                            // 버스 도착 정보, 혼잡도 정보
+                            JsonNode rootNode2 = getBusArriveCongestionInfo(startLocalStationID, busLocalBlID, stationSeq);
+                            JsonNode itemList = rootNode2.at("/msgBody").at("/itemList");
                             for (JsonNode item : itemList) {
-                                int rerideNum1 = Integer.parseInt(item.at("/reride_Num1").asText());
-                                int rerideNum2 = Integer.parseInt(item.at("/reride_Num2").asText());
+                                String rerideNum1 = item.at("/reride_Num1").asText();
+                                String rerideNum2 = item.at("/reride_Num2").asText();
                                 String arrMsg1 = item.at("/arrmsg1").asText();
                                 String arrMsg2 = item.at("/arrmsg2").asText();
 
@@ -110,17 +111,24 @@ public class TransServiceImpl implements TransService {
                 }
                 // 경로 중 지하철
                 else if (trafficType.equals("1")) {
-                    String wayCode = switch (subPath.at("/wayCode").asText()) {
+                    String startID = subPath.at("/startID").asText();
+                    String wayCode = subPath.at("/wayCode").asText();       // 상행 하행 구분(0 -> 상행, 1 -> 하행)
+                    String wayCodeConvert = switch (wayCode) {                      // 다른 API 호출을 위해 변경
                         case "1" -> "0";
                         case "2" -> "1";
                         default -> "unknown code";
                     };
 
                     for (JsonNode lane : lanes) {
-                        String[] subwayLine = lane.at("/name").asText().split(" ");
-                        String lineName = subwayLine[1];
+                        String subwayLine = lane.at("/name").asText();
+                        String lineName;
+                        if (subwayLine.contains(" ")) {                     // 호선 이름 추출
+                            lineName = subwayLine.split(" ")[1];
+                        } else {
+                            lineName = subwayLine;
+                        }
 
-                        String lineNumber = switch (lineName) {
+                        String lineNumber = switch (lineName) {         // 다른 API 호출을 위해 변경
                             case "1호선" -> "1001";
                             case "2호선" -> "1002";
                             case "3호선" -> "1003";
@@ -141,7 +149,7 @@ public class TransServiceImpl implements TransService {
                         };
 
                         JsonNode rootNode3;
-                        if (startName.charAt(startName.length() - 1) == '역') {
+                        if (startName.charAt(startName.length() - 1) == '역') {                      // 지하철 실시간 도착 정보
                             String modifiedName = startName.substring(0, startName.length() - 1);
                             rootNode3 = getSubwayArrive(modifiedName);
                         } else {
@@ -150,20 +158,21 @@ public class TransServiceImpl implements TransService {
                         JsonNode realTimeArrivalList = rootNode3.at("/realtimeArrivalList");
                         String btrainNo;
                         for (JsonNode item : realTimeArrivalList) {
-                            String subwayId = item.at("/subwayId").asText();            // 호선
+                            String subwayId = item.at("/subwayId").asText();                // 호선
                             String ordkey = item.at("/ordkey").asText();
-                            String updnLine = ordkey.substring(0, 1);                             // (상하행코드(1자리)
-                            String sequence = ordkey.substring(1, 2);                             // 순번(첫번째, 두번째 열차 , 1자리)
-                            String remainSt = ordkey.substring(2, 5);                             // 첫번째 도착예정 정류장 - 현재 정류장(3자리)
-                            String lastStName = ordkey.substring(5, ordkey.length() - 1);         // 목적지 정류장
-                            String btrainSttus = ordkey.substring(ordkey.length() - 1); // 급행여부(1자리)
+                            String updnLine = ordkey.substring(0, 1);                                 // (상하행코드(1자리): 0 -> 상행, 1 -> 하행)
+                            String sequence = ordkey.substring(1, 2);                                 // 순번(첫번째, 두번째 열차 , 1자리)
+                            String remainSt = ordkey.substring(2, 5);                                 // 첫번째 도착예정 정류장 - 현재 정류장(3자리)
+                            String lastStName = ordkey.substring(5, ordkey.length() - 1);             // 목적지 정류장
+                            String btrainSttus = ordkey.substring(ordkey.length() - 1);     // 급행여부(1자리): 0 -> 일반, 1 -> 급행
 
                             if (!(btrainSttus.equals("0") || btrainSttus.equals("1"))) {
                                 lastStName += btrainSttus;
-                                btrainSttus = "";
+                                btrainSttus = "0";
                             }
 
-                            if (subwayId.equals(lineNumber) && wayCode.equals(updnLine) && sequence.equals("1")) {
+                            // 호선, 상하행 일치 및 바로 다음 열차이면
+                            if (subwayId.equals(lineNumber) && wayCodeConvert.equals(updnLine) && sequence.equals("1")) {
                                 btrainNo = item.at("/btrainNo").asText();            // 열차 번호
                                 String arvlMsg1 = item.at("/arvlMsg2").asText();
                                 String arvlMsg2 = item.at("/aravlMsg3").asText();
@@ -185,8 +194,9 @@ public class TransServiceImpl implements TransService {
                                 arrive.put("remainSt", remainSt);
                                 arrive.put("lastStName", lastStName);
 
-                                subPathObject.set("arrive", arrive);
+                                subPathObject.set("arrive", arrive);        // 도착 정보 추가
 
+                                // 2, 3호선이라면
                                 if (Integer.parseInt(lineNumber) > 1001 && Integer.parseInt(lineNumber) < 1004) {
                                     lineNumber = lineNumber.substring(3, 4);
                                     JsonNode rootNode4 = getRealTimeSubwayInfo(lineNumber, btrainNo);
@@ -194,11 +204,74 @@ public class TransServiceImpl implements TransService {
                                     JsonNode conResult = data.at("/congestionResult");
 
                                     ObjectNode congestion = objectMapper.createObjectNode();
-                                    congestion.put("congestionTrain", conResult.at("/congestionTrain").asText());
-                                    congestion.put("congestionCar", conResult.at("/congestionCar").asText());
-                                    subPathObject.set("congestion", congestion);
+                                    congestion.put("congestionTrain", conResult.at("/congestionTrain"));
+                                    congestion.put("congestionCar", conResult.at("/congestionCar"));
+                                    subPathObject.set("congestion", congestion);    // 실시간 혼잡도 데이터 추가
                                 } else {
                                     /* 2, 3호선 제외한 나머지 호선 혼잡도 정보 추가 */
+                                    JsonNode rootNode4 = getSubwayStationInfo(startName);
+
+                                    String stationCD = null;
+                                    JsonNode rows = rootNode4.at("/SearchInfoBySubwayNameService").at("/row");
+                                    for (JsonNode row : rows) {
+                                        if (startID.equals(row.at("/FR_CODE").asText())) {
+                                            stationCD = row.at("/STATION_CD").asText();
+                                            break;
+                                        }
+                                    }
+                                    String weekTag = switch (shortDay) {
+                                        case "MON", "TUE", "WEN", "THU", "FRI" -> "1";
+                                        case "SAT" -> "2";
+                                        case "SUN" -> "3";
+                                        default -> "unknown week tag";
+                                    };
+                                    JsonNode rootNode5 = getSubwayTimeTable(stationCD, weekTag, wayCode);
+                                    rows = rootNode5.at("/SearchSTNTimeTableByIDService").at("/row");
+                                    String subwayStartName = null;
+                                    String subwayEndName = null;
+                                    for (JsonNode row : rows) {
+                                        String arriveTime = row.at("/ARRIVETIME").asText();
+                                        String[] arriveTimeSplit = arriveTime.split(":");
+                                        String arriveTimeHour = arriveTimeSplit[0];
+                                        int arriveTimeMinuteDetail = Integer.parseInt(arriveTimeSplit[1]);
+//                                        if (arriveTimeMinuteDetail < 10) {
+//                                            arriveTimeMinuteDetail = Integer.parseInt("0" + arriveTimeSplit[1]);
+//                                        }
+//                                        LOGGER.info("arriveTime: " + arriveTimeHour + ":" + arriveTimeMinuteDetail);
+                                        subwayStartName = row.at("/SUBWAYSNAME").asText();
+                                        subwayEndName = row.at("/SUBWAYENAME").asText();
+                                        if (hour.equals(arriveTimeHour) && arriveTimeMinuteDetail > Integer.parseInt(minute)) {
+                                            if (subwayStartName.charAt(subwayStartName.length() - 1) != '역') {
+                                                subwayStartName += "역";
+                                            }
+                                            if (subwayEndName.charAt(subwayEndName.length() - 1) != '역') {
+                                                subwayEndName += "역";
+                                            }
+                                            break;
+                                        }
+                                    }
+                                    String congestionTrain = null;
+                                    JsonNode rootNode6 = getSubwayCongestionInfo(startID, shortDay, hour);
+                                    JsonNode contents = rootNode6.at("/contents");
+                                    JsonNode stats = contents.at("/stat");
+                                    for (JsonNode stat : stats) {
+                                        if (stat.at("/endStationName").asText().equals(subwayEndName)
+                                                && stat.at("/startStationName").asText().equals(subwayStartName)
+                                                && stat.at("/directAt").asText().equals(btrainSttus)
+                                                && stat.at("/updnLine").asText().equals(wayCodeConvert)) {
+
+                                            JsonNode database = stat.at("/data");
+                                            for (JsonNode data : database) {
+                                                if (data.at("/mm").asText().equals(minute)) {
+                                                    congestionTrain = data.at("/congestionTrain").asText();
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    ObjectNode congestion = objectMapper.createObjectNode();
+                                    congestion.put("congestionTrain", congestionTrain);
+                                    subPathObject.set("congestion", congestion);
                                 }
                             }
                         }
@@ -206,7 +279,7 @@ public class TransServiceImpl implements TransService {
                 }
             }
         }
-        LOGGER.info("\n" + result.toPrettyString());
+        LOGGER.info("\n" + result);
         return result.toString();
     }
 
@@ -236,6 +309,7 @@ public class TransServiceImpl implements TransService {
                 .bodyToMono(String.class);
 
         return objectMapper.readTree(results.block());
+//        return new JSONObject(results.block());
     }
 
     // ODSayLab API 사용 -> 버스 순번(staOrd) 데이터 받음
@@ -262,11 +336,12 @@ public class TransServiceImpl implements TransService {
                 .retrieve()
                 .bodyToMono(String.class);
 
+//        return new JSONObject(results.block());
         return objectMapper.readTree(results.block());
     }
 
     // 공공데이터포털 사용 -> 혼잡도, 도착정보 데이터 받음
-    private JsonNode getBusArriveInfo(String stId, String busRouteId, String ord) throws JsonProcessingException {
+    private JsonNode getBusArriveCongestionInfo(String stId, String busRouteId, String ord) throws JsonProcessingException {
         String DATA_KEY = URLEncoder.encode(data_key, StandardCharsets.UTF_8);
 
         Mono<String> results = WebClient.builder()
@@ -290,11 +365,13 @@ public class TransServiceImpl implements TransService {
                 .retrieve()
                 .bodyToMono(String.class);
 
+//        return new JSONObject(results.block());
+
         return objectMapper.readTree(results.block());
     }
 
     // SK open API 사용 -> 지하철 혼잡도 정보 받음
-    private JsonNode getSubwayInfo(String stationCode, String day, String hh) throws JsonProcessingException {
+    private JsonNode getSubwayCongestionInfo(String stationCode, String day, String hh) throws JsonProcessingException {
         Mono<String> results = WebClient.builder()
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader("appkey", sk_key)
@@ -315,6 +392,7 @@ public class TransServiceImpl implements TransService {
                 .bodyToMono(String.class);
 
         return objectMapper.readTree(results.block());
+//        return new JSONObject(results.block());
     }
 
     private JsonNode getRealTimeSubwayInfo(String lineNumber, String trainNumber) throws JsonProcessingException {
@@ -336,6 +414,7 @@ public class TransServiceImpl implements TransService {
                 .bodyToMono(String.class);
 
         return objectMapper.readTree(results.block());
+//        return new JSONObject(results.block());
     }
 
     // 서울열린데이터광장 사용 -> 지하철 실시간 도착 데이터 받음.
@@ -359,5 +438,52 @@ public class TransServiceImpl implements TransService {
                 .bodyToMono(String.class);
 
         return objectMapper.readTree(results.block());
+//        return new JSONObject(results.block());
+    }
+
+    private JsonNode getSubwayTimeTable(String stationCode, String weekTag, String updnLine) throws JsonProcessingException {
+        Mono<String> results = WebClient.builder()
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .build()
+                .get()
+                .uri(uriBuilder -> {
+                    UriComponents uri = UriComponentsBuilder.newInstance()
+                            .scheme("http")
+                            .host("openAPI.seoul.go.kr")
+                            .port("8088")
+                            .path(subw_key + "/json/SearchSTNTimeTableByIDService/1/500/" + stationCode + "/" + weekTag + "/" + updnLine)
+                            .build(true);
+                    return uri.toUri();
+                })
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .bodyToMono(String.class);
+
+        return objectMapper.readTree(results.block());
+//        return new JSONObject(results.block());
+    }
+
+    private JsonNode getSubwayStationInfo(String stationName) throws JsonProcessingException {
+        String stName = URLEncoder.encode(stationName, StandardCharsets.UTF_8);
+
+        Mono<String> results = WebClient.builder()
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .build()
+                .get()
+                .uri(uriBuilder -> {
+                    UriComponents uri = UriComponentsBuilder.newInstance()
+                            .scheme("http")
+                            .host("openAPI.seoul.go.kr")
+                            .port("8088")
+                            .path(subw_key + "/json/SearchInfoBySubwayNameService/1/100/" + stName)
+                            .build(true);
+                    return uri.toUri();
+                })
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .bodyToMono(String.class);
+
+        return objectMapper.readTree(results.block());
+//        return new JSONObject(results.block());
     }
 }
