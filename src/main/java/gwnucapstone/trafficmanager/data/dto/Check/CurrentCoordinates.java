@@ -6,6 +6,6 @@ import lombok.Getter;
 @Data
 @Getter
 public class CurrentCoordinates {
-    double x =  127.036159;
-    double y = 37.661960;
+    double x =  127.03519549050178;
+    double y =   37.64857668338342;
 }
