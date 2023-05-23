@@ -21,8 +21,8 @@ public class TransController {
         this.transService = transService;
     }
 
-    @PostMapping("/search")
-    public ResponseEntity<String> search(@RequestHeader String AUTHORIZATION, @RequestBody DirectionRequestDTO dto) {
+    @PostMapping("/searchPath")
+    public ResponseEntity<String> searchPath(@RequestHeader String AUTHORIZATION, @RequestBody DirectionRequestDTO dto) {
         String result = transService.getPathWithCongestion(dto.getSx(), dto.getSy(), dto.getEx(), dto.getEy());
         return ResponseEntity.ok().body(result);
     }

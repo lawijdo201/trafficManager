@@ -68,7 +68,7 @@ public class UserController {
         } else {
             LOGGER.info("[login] 로그인 실패 (아이디가 존재하지 않거나 옳지 않은 패스워드)");
             response.addProperty("result", "failed");
-            response.addProperty("msg", "Not exists Id Or wrong Password");
+            response.addProperty("msg", "Not exists Id or wrong Password");
             return ResponseEntity.badRequest().body(response.toString());
         }
     }

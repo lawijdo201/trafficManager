@@ -31,7 +31,7 @@ public class TransServiceImpl implements TransService {
     private final Logger LOGGER = LoggerFactory.getLogger(TransServiceImpl.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private List<ObjectNode> subPathObject;
-    private List<ObjectNode> pathObject;
+    private List<ObjectNode> infoObject;
     private final Map<String, String> dayMap = new HashMap<>() {{
         put("MON", "1");
         put("TUE", "1");
@@ -111,7 +111,7 @@ public class TransServiceImpl implements TransService {
     @Override
     public String getPathWithCongestion(String sx, String sy, String ex, String ey) {
         subPathObject = new ArrayList<>();
-        pathObject = new ArrayList<>();
+        infoObject = new ArrayList<>();
 
         LocalTime currentTime = LocalTime.now();
         LocalDate today = LocalDate.now();
@@ -199,7 +199,7 @@ public class TransServiceImpl implements TransService {
                     String startName = subDTO.getStartName();               // 시작 역
                     String startID = subDTO.getStartID();                   // 시작 역 ID
                     String wayCode = subDTO.getWayCode();                   // 상하행 여부
-                    String wayCodeConvert = subDTO.getWayCodeConvert();     // 변환한 상하행 상태
+                    String wayCodeConvert = subDTO.getWayCodeConvert();     // 변환한 상하행 여부
 
                     int subCount = 0;           // 지하철 개수
                     int totalSubCongestion = 0; // 총 지하철 혼잡도
@@ -238,7 +238,6 @@ public class TransServiceImpl implements TransService {
                         StationDTO stationDTO = getSubwayStartEndStation(stationCode, weekTag, wayCode, hour, minute);
                         String startStation = stationDTO.getStartStationName();
                         String endStation = stationDTO.getEndStationName();
-                        LOGGER.info("[start]: " + startStation + " [end]: " + endStation);
 
                         // 2, 3호선 혼잡도 처리
                         if (intLine >= 1002 && intLine <= 1003) {
@@ -306,10 +305,14 @@ public class TransServiceImpl implements TransService {
                 average = 0;
             }
             // 결과 값에 평균 혼잡도 추가
-            pathObject.get(infoSeq).put("averageCongestion", String.format("%.1f", average));
+            if (average != 0) {
+                infoObject.get(infoSeq).put("averageCongestion", String.format("%.1f", average));
+            } else {
+                infoObject.get(infoSeq).put("averageCongestion", "no info");
+            }
             infoSeq++;
         }
-        return totalResult.toString();
+        return totalResult.toPrettyString();
     }
 
     // ---------------------------------------------------------------------------------------------------------------------------------
@@ -344,11 +347,13 @@ public class TransServiceImpl implements TransService {
         }
 
         for (JsonNode path : totalResult.at("/result").at("/path")) {
-            pathObject.add((ObjectNode) path);
             List<TransInfoDTO> transList = new ArrayList<>();
+            infoObject.add((ObjectNode) path.at("/info"));
+
             for (JsonNode subPath : path.at("/subPath")) {
                 String trafficType = subPath.at("/trafficType").asText();
                 JsonNode lanes = subPath.at("/lane");
+
                 if (trafficType.equals("2")) {
                     BusInfoDTO busDTO = new BusInfoDTO();
                     busDTO.setTrafficType(trafficType);
@@ -358,6 +363,7 @@ public class TransServiceImpl implements TransService {
                     busDTO.setStartID(subPath.at("/startID").asText());
                     List<String> busLocalBlIDList = new ArrayList<>();
                     List<String> busIDList = new ArrayList<>();
+
                     for (JsonNode lane : lanes) {
                         busLocalBlIDList.add(lane.at("/busLocalBlID").asText());
                         busIDList.add(lane.at("/busID").asText());
@@ -374,6 +380,7 @@ public class TransServiceImpl implements TransService {
                     subDTO.setWayCode(subPath.at("/wayCode").asText());
                     subDTO.setWayCodeConvert(Integer.toString(subPath.at("/wayCode").asInt() - 1));
                     List<String> lineNumberList = new ArrayList<>();
+
                     for (JsonNode lane : lanes) {
                         String subwayLine = lane.at("/name").asText();
                         String lineName;
