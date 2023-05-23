@@ -12,6 +12,7 @@ import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.method.P;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -62,15 +63,15 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
             JSONObject jsonObject = (JSONObject) parser.parse(AroundStation);
             JSONObject jsonResult = (JSONObject) jsonObject.get("result");
             JSONArray lane = (JSONArray) jsonResult.get("lane");
-            for (int i = 0; i < lane.size(); i++) {
-                JSONObject businfo = (JSONObject) lane.get(i);
+            for (Object value : lane) {
+                JSONObject businfo = (JSONObject) value;
 
                 //버스 혼잡도
                 if (businfo.get("stationClass").toString().equals("1")) {
                     JSONArray busList = (JSONArray) businfo.get("busList");
-                    for (int k = 0; k < busList.size(); k++) {
-                        JSONObject busID = (JSONObject) busList.get(k);
-                        int busPercent  = Integer.parseInt(getBusTraffic(businfo.get("stationID").toString(), busID.get("busID").toString(), busID.get("busNo").toString()));
+                    for (Object o : busList) {
+                        JSONObject busID = (JSONObject) o;
+                        int busPercent = Integer.parseInt(getBusTraffic(businfo.get("stationID").toString(), busID.get("busID").toString(), busID.get("busNo").toString()));
                         if (busPercent != 0) {
                             busPercent *= 20;
                         }
@@ -106,7 +107,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
         subway.put(name, stationArr);
 
         try {
-            String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8.toString());
+            String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8);
             String result = WebClient.builder()
                     .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                     .build()
@@ -130,61 +131,78 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
             JSONObject jsonObject = (JSONObject) parser.parse(result);
             JSONObject SearchInfoBySubwayNameService = (JSONObject) jsonObject.get("SearchInfoBySubwayNameService");
             JSONArray row = (JSONArray) SearchInfoBySubwayNameService.get("row");
-            for (int i = 0; i < row.size(); i++) {
-                JSONObject code = (JSONObject) row.get(i);
+            for (Object o : row) {
+                JSONObject code = (JSONObject) o;
                 long st_code = Long.parseLong(code.get("FR_CODE").toString());
                 JSONObject station = subwayTraffic(name, st_code);
                 station.put("line", code.get("LINE_NUM"));
                 stationArr.add(station);
             }
-        } catch (UnsupportedEncodingException | ParseException e) {
+        } catch (ParseException e) {
             throw new RuntimeException(e);
         }
         return subway;
     }
 
+    //버스 정류장을 검색해 혼잡도를 가져온다.
     @Override
     public JSONObject searchbusTraffic(String name) {
-        JSONObject bus = new JSONObject();
-        JSONArray busArr = new JSONArray();
-        bus.put(name, busArr);
-
+        JSONObject BusSearch = new JSONObject();
+        JSONArray BusTrafficObj = new JSONArray();
+        BusSearch.put("result", BusTrafficObj);
+        String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8);
+        String result = WebClient.builder()
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .build()
+                .get()
+                .uri(uriBuilder -> {
+                    UriComponents uri = UriComponentsBuilder.newInstance()
+                            .scheme("https")
+                            .host("api.odsay.com")
+                            .path("/v1/api/searchStation")
+                            .queryParam("apiKey", apiKey)
+                            .queryParam("stationName", encodedName)
+                            .queryParam("stationClass", 1)
+                            .build(true);
+                    return uri.toUri();
+                })
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
         try {
-            String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8.toString());
-            String result = WebClient.builder()
-                    .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                    .build()
-                    .get()
-                    .uri(uriBuilder -> {
-                        UriComponents uri = UriComponentsBuilder.newInstance()
-                                .scheme("http")
-                                .host("openapi.seoul.go.kr")
-                                .port(8088)
-                                .path(opendataKey + "/json/busStopLocationXyInfo/1/5/" + encodedName)
-                                .build(true);
-                        System.out.println(uri);
-                        return uri.toUri();
-                    })
-                    .accept(MediaType.APPLICATION_JSON)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
-            System.out.println(result);
             JSONParser parser = new JSONParser();
             JSONObject jsonObject = (JSONObject) parser.parse(result);
-            JSONObject busStopLocationXyInfo = (JSONObject) jsonObject.get("busStopLocationXyInfo");
-            JSONArray row = (JSONArray) busStopLocationXyInfo.get("row");
-            for (int i = 0; i < row.size(); i++) {
-                JSONObject code = (JSONObject) row.get(i);
-                System.out.println("정류장 ID" + code.get("STOP_NO"));
-                System.out.println("정류장 이름" + code.get("STOP_NM"));
-/*                station.put("line", code.get("LINE_NUM"));
-                stationArr.add(station);*/
+            JSONObject jsonresult = (JSONObject) jsonObject.get("result");
+            JSONArray stationArr = (JSONArray) jsonresult.get("station");
+            for (Object o : stationArr) {
+                JSONObject station = (JSONObject) o;
+                log.info("staionID : {}", station.get("stationID"));
+                JSONArray businfoArr = (JSONArray) station.get("businfo");
+                for (Object k : businfoArr) {
+                    JSONObject businfo = (JSONObject) k;
+                    int busPercent = Integer.parseInt(getBusTraffic(station.get("stationID").toString(), getBusId(businfo.get("busNo").toString()), businfo.get("busNo").toString()));
+                    System.out.println(businfo.get("busLocalBlID").toString() + "busNo" + businfo.get("busNo").toString() + "Percent" + busPercent * 20);
+                   if (busPercent != 0) {
+                        busPercent *= 20;
+                    }
+                    JSONObject bus = new JSONObject();
+                    bus.put("busNo", businfo.get("busNo").toString());
+                    bus.put("traffic", busPercent + "%");
+                    bus.put("stationID", station.get("stationID").toString());
+                    BusTrafficObj.add(bus);
+                }
+
             }
-        } catch (UnsupportedEncodingException | ParseException e) {
+        } catch (ParseException e) {
+            System.out.println(e);
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        } catch (UnsupportedEncodingException e) {
             throw new RuntimeException(e);
         }
-        return null;
+
+        return BusSearch;
     }
 
 
@@ -213,11 +231,11 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
         return result;
     }
 
-    //버스번호를 통해 버스노선ID를 가져온다
-    private String getRouteId(String busNo) throws ParseException, UnsupportedEncodingException {
+    //버스번호를 통해 버스ID를 가져온다
+    private String getBusId(String busNo) throws ParseException, UnsupportedEncodingException {
         log.info("getRouteId 메서드 진입");
         log.info("busNO {}", busNo);
-        String encodedbusNo = URLEncoder.encode(busNo, StandardCharsets.UTF_8.toString());
+        String encodedbusNo = URLEncoder.encode(busNo, StandardCharsets.UTF_8);
         WebClient webClient = WebClient.builder()
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .build();
@@ -242,8 +260,46 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
         JSONObject jsonObject = (JSONObject) parser.parse(result);
         JSONObject jsonResult = (JSONObject) jsonObject.get("result");
         JSONArray lane = (JSONArray) jsonResult.get("lane");
-        for(int i = 0; i<lane.size();i++){
-            JSONObject laneObj = (JSONObject) lane.get(i);
+        for (Object o : lane) {
+            JSONObject laneObj = (JSONObject) o;
+            if (laneObj.get("busCityName").toString().equals("서울")) {
+                return laneObj.get("busID").toString();
+            }
+        }
+
+        return null;
+    }
+    //버스번호를 통해 버스노선ID를 가져온다
+    private String getRouteId(String busNo) throws ParseException, UnsupportedEncodingException {
+        log.info("getRouteId 메서드 진입");
+        log.info("busNO {}", busNo);
+        String encodedbusNo = URLEncoder.encode(busNo, StandardCharsets.UTF_8);
+        WebClient webClient = WebClient.builder()
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .build();
+        String result = webClient
+                .get()
+                .uri(uriBuilder -> {
+                    UriComponents uri = UriComponentsBuilder.newInstance()
+                            .scheme("https")
+                            .host("api.odsay.com")
+                            .path("/v1/api/searchBusLane")
+                            .queryParam("apiKey", apiKey)
+                            .queryParam("busNo", encodedbusNo)
+                            .build(true);
+                    return uri.toUri();
+                })
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+        //log.info("result : {}", result);
+        JSONParser parser = new JSONParser();
+        JSONObject jsonObject = (JSONObject) parser.parse(result);
+        JSONObject jsonResult = (JSONObject) jsonObject.get("result");
+        JSONArray lane = (JSONArray) jsonResult.get("lane");
+        for (Object o : lane) {
+            JSONObject laneObj = (JSONObject) o;
             if (laneObj.get("busCityName").toString().equals("서울")) {
                 return laneObj.get("localBusID").toString();
             }
@@ -252,7 +308,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
         return null;
     }
 
-    //버스노선ID를 통해 버스 정류장순번을 가져온다.
+    //버스ID를 통해 버스 정류장순번을 가져온다.
     //busId : 버스 ID, stId : 정류장 id
     private String getidx(String busId, String stId) throws ParseException{
         String result = WebClient.builder()
@@ -283,8 +339,8 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
         //System.out.println(jsonObject);
         JSONObject jsonResult = (JSONObject) jsonObject.get("result");
         JSONArray lane = (JSONArray) jsonResult.get("station");
-        for(int i = 0; i<lane.size();i++){
-            JSONObject stationObj = (JSONObject) lane.get(i);
+        for (Object o : lane) {
+            JSONObject stationObj = (JSONObject) o;
             if (stationObj.get("stationID").toString().equals(stId)) {
                 return stationObj.get("idx").toString();
             }
@@ -318,7 +374,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
                 .bodyToMono(String.class)
-                .block();
+                . block();
 
 
         try {
@@ -326,19 +382,18 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
             JSONObject jsonObject = (JSONObject) parser.parse(result);
             JSONObject contents = (JSONObject) jsonObject.get("contents");
             JSONArray stat = (JSONArray) contents.get("stat");
-            for (int i = 0; i < stat.size(); i++) {
-                JSONObject statArr = (JSONObject) stat.get(i);
+            for (Object o : stat) {
+                JSONObject statArr = (JSONObject) o;
                 JSONArray dataArr = (JSONArray) statArr.get("data");
                 JSONObject data = (JSONObject) dataArr.get(0);
                 System.out.println(data.toString());
-                String congestionTrain =  data.get("congestionTrain").toString();
-                if(statArr.get("updnLine").equals("1")){
+                String congestionTrain = data.get("congestionTrain").toString();
+                if (statArr.get("updnLine").equals("1")) {
                     updOneCnt++;
-                    updnLine1 += Integer.valueOf(congestionTrain);
-                }
-                else{
+                    updnLine1 += Integer.parseInt(congestionTrain);
+                } else {
                     updZeroCnt++;
-                    updnLine0 += Integer.valueOf(congestionTrain);
+                    updnLine0 += Integer.parseInt(congestionTrain);
                 }
             }
 
@@ -369,9 +424,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
             System.out.println("***버스노선ID : " + busRouteId);
             ord = getidx(busId, stId);
             System.out.println("***버스순번 : " + ord);
-        } catch (ParseException e) {
-            throw new RuntimeException(e);
-        } catch (UnsupportedEncodingException e) {
+        } catch (ParseException | UnsupportedEncodingException e) {
             throw new RuntimeException(e);
         }
 
@@ -403,8 +456,8 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
         JSONObject jsonObject = (JSONObject) parser.parse(result);
         JSONObject msgBody = (JSONObject) jsonObject.get("msgBody");
         JSONArray itemList = (JSONArray) msgBody.get("itemList");
-        for (int i = 0; i < itemList.size(); i++) {
-            JSONObject itemListObj = (JSONObject) itemList.get(i);
+        for (Object o : itemList) {
+            JSONObject itemListObj = (JSONObject) o;
             if (itemListObj.get("staOrd").equals(ord)) {
                 traffic = itemListObj.get("reride_Num1").toString();
             }
