@@ -7,7 +7,10 @@ import lombok.Getter;
 @Getter
 public class DirectionRequestDTO {
     private String sx;
+
     private String sy;
+
     private String ex;
+
     private String ey;
 }
