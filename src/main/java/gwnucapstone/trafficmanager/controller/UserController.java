@@ -48,7 +48,7 @@ public class UserController {
         } else {
             LOGGER.info("[join] 회원가입 실패 (이미 존재하는 아이디 or 이미 존재하는 사용자)");
             response.addProperty("result", "failed");
-            response.addProperty("msg", "already exists ID");
+            response.addProperty("msg", "already exists ID or User");
             return ResponseEntity.badRequest().body(response.toString());
         }
     }

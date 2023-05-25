@@ -45,6 +45,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
 
     @Value(("${seoul.opendata.apikey}"))
     String opendataKey;
+
     //주변 역 검색
     @Override
     public JSONObject sortTraffic(CurrentCoordinates currentCoordinates) {
@@ -183,7 +184,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
                     JSONObject businfo = (JSONObject) k;
                     int busPercent = Integer.parseInt(getBusTraffic(station.get("stationID").toString(), getBusId(businfo.get("busNo").toString()), businfo.get("busNo").toString()));
                     System.out.println(businfo.get("busLocalBlID").toString() + "busNo" + businfo.get("busNo").toString() + "Percent" + busPercent * 20);
-                   if (busPercent != 0) {
+                    if (busPercent != 0) {
                         busPercent *= 20;
                     }
                     JSONObject bus = new JSONObject();
@@ -206,7 +207,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
     }
 
 
-        //내 주위에 있는 역을 가져온다.
+    //내 주위에 있는 역을 가져온다.
     private String getAroundStation(CurrentCoordinates currentCoordinates) {
         String result = WebClient.builder()
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
@@ -269,6 +270,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
 
         return null;
     }
+
     //버스번호를 통해 버스노선ID를 가져온다
     private String getRouteId(String busNo) throws ParseException, UnsupportedEncodingException {
         log.info("getRouteId 메서드 진입");
@@ -310,7 +312,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
 
     //버스ID를 통해 버스 정류장순번을 가져온다.
     //busId : 버스 ID, stId : 정류장 id
-    private String getidx(String busId, String stId) throws ParseException{
+    private String getidx(String busId, String stId) throws ParseException {
         String result = WebClient.builder()
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .build()
@@ -332,7 +334,6 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
                 .block();
 
 
-
         System.out.println(result);
         JSONParser parser = new JSONParser();
         JSONObject jsonObject = (JSONObject) parser.parse(result);
@@ -350,7 +351,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
     }
 
     //지하철의 혼잡도를 가져온다.
-    private JSONObject subwayTraffic(String stationName, Long stationCode){
+    private JSONObject subwayTraffic(String stationName, Long stationCode) {
         JSONObject subway = new JSONObject();
         int updnLine1 = 0;
         int updOneCnt = 0;
@@ -374,7 +375,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
                 .accept(MediaType.APPLICATION_JSON)
                 .retrieve()
                 .bodyToMono(String.class)
-                . block();
+                .block();
 
 
         try {
@@ -397,10 +398,10 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
                 }
             }
 
-        }catch (ParseException e){
+        } catch (ParseException e) {
             System.out.println("역 코드 에러" + e);
         }
-        if(updOneCnt!=0){
+        if (updOneCnt != 0) {
             updnLine1 = updnLine1 / updOneCnt;
         }
         if (updZeroCnt != 0) {
@@ -420,7 +421,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
         String busRouteId;
         String ord;
         try {
-            busRouteId= getRouteId(busNo);
+            busRouteId = getRouteId(busNo);
             System.out.println("***버스노선ID : " + busRouteId);
             ord = getidx(busId, stId);
             System.out.println("***버스순번 : " + ord);
@@ -428,7 +429,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
             throw new RuntimeException(e);
         }
 
-        if(busRouteId == null){
+        if (busRouteId == null) {
             return traffic;
         }
         log.info("stId : {}, busRouteId : {}, ord : {}", stId, busRouteId, ord);

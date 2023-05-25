@@ -70,8 +70,8 @@ public class TransServiceImpl implements TransService {
         put("99", "운행 중");
     }};
     private final Map<Integer, Integer> busConMap = new HashMap<>() {{
-        put(3, 45);
-        put(4, 70);
+        put(3, 25);
+        put(4, 60);
         put(5, 100);
         put(0, 0);
     }};
@@ -85,6 +85,26 @@ public class TransServiceImpl implements TransService {
         put("천호", "천호(풍납토성)");
         put("몽촌토성", "몽촌토성(평화의문)");
         put("새절", "새절(신사)");
+        put("군자", "군자(능동)");
+        put("쌍용", "쌍용(나가렛대)");
+        put("총신대입구", "총신대입구(이수)");
+        put("신정", "신정(은행정)");
+        put("오목교", "오목교(목동운동장앞)");
+        put("아차산", "아차산(어린이대공원후문)");
+        put("광나루", "광나루(장신대)");
+        put("굽은다리", "굽은다리(강동구민회관앞");
+        put("화랑대", "화랑대(서울여대입구)");
+        put("상월곡", "상월곡(한국과학기술연구원)");
+        put("월곡", "월곡(동덕여대)");
+        put("안암", "안암(고대병원앞)");
+        put("대흥", "대흥(서강대앞)");
+        put("월드컵경기장", "월드컵경기장(성산)");
+        put("어린이대공원", "어린이대공원(세종대)");
+        put("숭실대입구", "숭실대입구(살피재)");
+    }};
+    private Map<String, String> expMap = new HashMap<>() {{
+        put("G", "0");
+        put("D", "1");
     }};
 
     private JsonNode totalResult;
@@ -137,8 +157,8 @@ public class TransServiceImpl implements TransService {
         List<List<TransInfoDTO>> info = getAllPath(sx, sy, ex, ey);
 
         // seq 번째 JsonNode에 데이터를 추가하기 위한 변수
-        int seq = 0;
-        int infoSeq = 0;
+        int transIndex = 0;
+        int pathIndex = 0;
         // 경로들
         for (List<TransInfoDTO> pathList : info) {
             double totalCongestion = 0;     // 혼잡도 총합
@@ -190,7 +210,7 @@ public class TransServiceImpl implements TransService {
                         count++;
                     }
                     // 결과 값에 버스 도착 정보, 혼잡도 정보 추가
-                    subPathObject.get(seq).put("arriveCongestion", busArrCon);
+                    subPathObject.get(transIndex).put("arriveCongestion", busArrCon);
                 }
                 // 지하철
                 else {
@@ -231,15 +251,17 @@ public class TransServiceImpl implements TransService {
                         String trainNo = btrainDTO.getTrainNo();        // 지하철 번호
                         String trainExp = btrainDTO.getTrainExp();      // 급행 여부
 
-                        // 역 코드 추출(역 이름과 외부ID 사용해서)
+                        // 역 코드 추출(역 이름과 외부 ID 사용해서)
                         String stationCode = getStationCode(startName, startID);
 
                         // 출발역, 종착역 추출
-                        StationDTO stationDTO = getSubwayStartEndStation(stationCode, weekTag, wayCode, hour, minute);
+                        StationDTO stationDTO = getSubwayStartEndStation(stationCode, weekTag, trainExp, wayCode, hour, minute);
                         String startStation = stationDTO.getStartStationName();
                         String endStation = stationDTO.getEndStationName();
 
                         // 2, 3호선 혼잡도 처리
+                        LOGGER.info(pathIndex + " | " + transIndex + " | " + intLine);
+                        LOGGER.info("[startName]: " + startStation + " | " + "[endName]: " + endStation);
                         if (intLine >= 1002 && intLine <= 1003) {
                             String line = lineNumber.substring(3, 4);
                             // 열차 번호가 추출됐다면
@@ -250,11 +272,10 @@ public class TransServiceImpl implements TransService {
                                 if (!congestionDTO.isSuccess()) {
                                     subwayCongestion = addSubwayCongestion(subCongestion, startID, startStation,
                                             endStation, trainExp, wayCodeConvert, minute);
-                                }
-                                // 지하철 혼잡도가 0이라면 no info 정보 추가
-                                if (subwayCongestion == -1 || subwayCongestion == 0) {
-                                    noInfoSubwayCongestion(subCongestion);
-                                    continue;
+                                    // 지하철 혼잡도가 0이라면 no info 정보 추가
+                                    if (subwayCongestion == -1 || subwayCongestion == 0) {
+                                        continue;
+                                    }
                                 }
                                 totalSubCongestion += subwayCongestion;
                                 subCount++;
@@ -268,7 +289,6 @@ public class TransServiceImpl implements TransService {
                                         endStation, trainExp, wayCodeConvert, minute);
                                 // 지하철 혼잡도가 0이라면 no info 정보 추가
                                 if (subwayCongestion == -1 || subwayCongestion == 0) {
-                                    noInfoSubwayCongestion(subCongestion);
                                     continue;
                                 }
                                 totalSubCongestion += subwayCongestion;
@@ -293,10 +313,10 @@ public class TransServiceImpl implements TransService {
                         count++;
                     }
                     // 결과 값에 지하철 도착 정보, 혼잡도 정보 추가
-                    subPathObject.get(seq).put("arrive", subArrive);
-                    subPathObject.get(seq).put("congestion", subCongestion);
+                    subPathObject.get(transIndex).put("arrive", subArrive);
+                    subPathObject.get(transIndex).put("congestion", subCongestion);
                 }
-                seq++;
+                transIndex++;
             }
             // 총 평균 혼잡도 구함.
             double average = totalCongestion / (double) count;
@@ -306,39 +326,43 @@ public class TransServiceImpl implements TransService {
             }
             // 결과 값에 평균 혼잡도 추가
             if (average != 0) {
-                infoObject.get(infoSeq).put("averageCongestion", String.format("%.1f", average));
+                infoObject.get(pathIndex).put("averageCongestion", String.format("%.1f", average));
             } else {
-                infoObject.get(infoSeq).put("averageCongestion", "no info");
+                infoObject.get(pathIndex).put("averageCongestion", "no info");
             }
-            infoSeq++;
+            pathIndex++;
         }
         return totalResult.toPrettyString();
     }
 
-    // ---------------------------------------------------------------------------------------------------------------------------------
+    // -----------------------------------------------------------------------------------------------------------------
     // ODSayLab API 활용 -> 교통수단 경로 데이터 받음
     private List<List<TransInfoDTO>> getAllPath(String sx, String sy, String ex, String ey) {
         String ODSAY_KEY = URLEncoder.encode(odsay_key, StandardCharsets.UTF_8);
         List<List<TransInfoDTO>> pathList = new ArrayList<>();
 
         Mono<String> results;
-        results = apiWebClient
-                .get()
-                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
-                        .scheme("https")
-                        .host("api.odsay.com")
-                        .path("/v1/api/searchPubTransPathT")
-                        .queryParam("apiKey", ODSAY_KEY)
-                        .queryParam("SX", sx)
-                        .queryParam("SY", sy)
-                        .queryParam("EX", ex)
-                        .queryParam("EY", ey)
-                        .build(true)
-                        .toUri()
-                )
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .bodyToMono(String.class);
+        try {
+            results = apiWebClient
+                    .get()
+                    .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                            .scheme("https")
+                            .host("api.odsay.com")
+                            .path("/v1/api/searchPubTransPathT")
+                            .queryParam("apiKey", ODSAY_KEY)
+                            .queryParam("SX", sx)
+                            .queryParam("SY", sy)
+                            .queryParam("EX", ex)
+                            .queryParam("EY", ey)
+                            .build(true)
+                            .toUri()
+                    )
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .bodyToMono(String.class);
+        } catch (Exception e) {
+            return pathList;
+        }
 
         try {
             totalResult = objectMapper.readTree(results.block());
@@ -404,22 +428,26 @@ public class TransServiceImpl implements TransService {
     private String getBusStationSequence(String stationID, String routeIDs) {
         String ODSAY_KEY = URLEncoder.encode(odsay_key, StandardCharsets.UTF_8);
         Mono<String> results;
-        results = apiWebClient
-                .get()
-                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
-                        .scheme("https")
-                        .host("api.odsay.com")
-                        .path("/v1/api/realtimeStation")
-                        .queryParam("apiKey", ODSAY_KEY)
-                        .queryParam("output", "json")
-                        .queryParam("stationID", stationID)
-                        .queryParam("routeIDs", routeIDs)
-                        .build(true)
-                        .toUri()
-                )
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .bodyToMono(String.class);
+        try {
+            results = apiWebClient
+                    .get()
+                    .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                            .scheme("https")
+                            .host("api.odsay.com")
+                            .path("/v1/api/realtimeStation")
+                            .queryParam("apiKey", ODSAY_KEY)
+                            .queryParam("output", "json")
+                            .queryParam("stationID", stationID)
+                            .queryParam("routeIDs", routeIDs)
+                            .build(true)
+                            .toUri()
+                    )
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .bodyToMono(String.class);
+        } catch (Exception e) {
+            return null;
+        }
 
         JsonNode result;
         try {
@@ -440,23 +468,27 @@ public class TransServiceImpl implements TransService {
     private int addBusArriveAndCongestion(ArrayNode arrCon, String stId, String busRouteId, String ord) {
         String DATA_KEY = URLEncoder.encode(data_key, StandardCharsets.UTF_8);
         Mono<String> results;
-        results = apiWebClient
-                .get()
-                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
-                        .scheme("http")
-                        .host("ws.bus.go.kr")
-                        .path("/api/rest/arrive/getArrInfoByRoute")
-                        .queryParam("serviceKey", DATA_KEY)
-                        .queryParam("stId", stId)
-                        .queryParam("busRouteId", busRouteId)
-                        .queryParam("ord", ord)
-                        .queryParam("resultType", "json")
-                        .build(true)
-                        .toUri()
-                )
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .bodyToMono(String.class);
+        try {
+            results = apiWebClient
+                    .get()
+                    .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                            .scheme("http")
+                            .host("ws.bus.go.kr")
+                            .path("/api/rest/arrive/getArrInfoByRoute")
+                            .queryParam("serviceKey", DATA_KEY)
+                            .queryParam("stId", stId)
+                            .queryParam("busRouteId", busRouteId)
+                            .queryParam("ord", ord)
+                            .queryParam("resultType", "json")
+                            .build(true)
+                            .toUri()
+                    )
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .bodyToMono(String.class);
+        } catch (Exception e) {
+            return -1;
+        }
 
         JsonNode result;
         try {
@@ -466,8 +498,9 @@ public class TransServiceImpl implements TransService {
         }
 
         JsonNode itemList = result.at("/msgBody").at("/itemList");
-        int busCongestion1 = 0;
-        int busCongestion2 = 0;
+        int busCongestion1;
+        int busCongestion2;
+        int busAverage = 0;
         for (JsonNode item : itemList) {
             /* 경로 데이터에 버스 도착정보, 혼잡도 정보 추가하는 코드 */
             busCongestion1 = busConMap.get(Integer.parseInt(item.at("/reride_Num1").asText()));
@@ -486,28 +519,35 @@ public class TransServiceImpl implements TransService {
                 arriveCongestion.put("busCongestion2", "no info");
             }
 
+            busAverage = (busCongestion1 + busCongestion2) / 2;
             arrCon.add(arriveCongestion);
         }
-        LOGGER.info("[addBusArriveAndCongestion]: " + busCongestion1);
-        return busCongestion1;
+        LOGGER.info("[addBusArriveAndCongestion]: " + busAverage);
+        return busAverage;
     }
 
     private CongestionDTO addRealTimeSubwayCongestion(ArrayNode subCon, String lineNumber, String trainNumber) {
         Mono<String> results;
         CongestionDTO congestionDTO = new CongestionDTO();
-        results = apiWebClient
-                .get()
-                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
-                        .scheme("https")
-                        .host("apis.openapi.sk.com")
-                        .path("/puzzle/congestion-train/rltm/trains/" + lineNumber + "/" + trainNumber)
-                        .build(true)
-                        .toUri()
-                )
-                .accept(MediaType.APPLICATION_JSON)
-                .header("appkey", sk_key)
-                .retrieve()
-                .bodyToMono(String.class);
+        try {
+            results = apiWebClient
+                    .get()
+                    .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                            .scheme("https")
+                            .host("apis.openapi.sk.com")
+                            .path("/puzzle/congestion-train/rltm/trains/" + lineNumber + "/" + trainNumber)
+                            .build(true)
+                            .toUri()
+                    )
+                    .accept(MediaType.APPLICATION_JSON)
+                    .header("appkey", sk_key)
+                    .retrieve()
+                    .bodyToMono(String.class);
+        } catch (Exception e) {
+            congestionDTO.setSuccess(false);
+            congestionDTO.setCongestion(-1);
+            return congestionDTO;
+        }
 
         JsonNode result;
         try {
@@ -533,31 +573,39 @@ public class TransServiceImpl implements TransService {
         subCon.add(congestion);                 // 실시간 혼잡도 데이터 추가
         congestionDTO.setSuccess(true);
         congestionDTO.setCongestion(Integer.parseInt(conTrain));
+        LOGGER.info("[addRealTimeSubwayCongestion]: " + congestionDTO.getCongestion());
         return congestionDTO;
     }
 
     // SK open API 사용 -> 지하철 혼잡도 정보 받음
     private int addSubwayCongestion(ArrayNode subCon, String stationCode, String start, String end,
-                                    String sttus, String wayCodeConvert, String minute) {
+                                    String trainExp, String wayCodeConvert, String minute) {
+        ObjectNode congestion = objectMapper.createObjectNode();
         Mono<String> results;
-        results = apiWebClient
-                .get()
-                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
-                        .scheme("https")
-                        .host("apis.openapi.sk.com")
-                        .path("/puzzle/congestion-train/stat/stations/" + stationCode)
-                        .build(true)
-                        .toUri()
-                )
-                .accept(MediaType.APPLICATION_JSON)
-                .header("appkey", sk_key)
-                .retrieve()
-                .bodyToMono(String.class);
+        try {
+            results = apiWebClient
+                    .get()
+                    .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                            .scheme("https")
+                            .host("apis.openapi.sk.com")
+                            .path("/puzzle/congestion-train/stat/stations/" + stationCode)
+                            .build(true)
+                            .toUri()
+                    )
+                    .accept(MediaType.APPLICATION_JSON)
+                    .header("appkey", sk_key)
+                    .retrieve()
+                    .bodyToMono(String.class);
+        } catch (Exception e) {
+            congestion.put("congestionTrain", "no info");
+            return -1;
+        }
 
         JsonNode result;
         try {
             result = objectMapper.readTree(results.block());
         } catch (Exception e) {
+            congestion.put("congestionTrain", "no info");
             return -1;
         }
 
@@ -565,7 +613,7 @@ public class TransServiceImpl implements TransService {
         for (JsonNode stat : result.at("/contents").at("/stat")) {
             if (stat.at("/startStationName").asText().equals(start)
                     && stat.at("/endStationName").asText().equals(end)
-                    && stat.at("/directAt").asText().equals(sttus)
+                    && stat.at("/directAt").asText().equals(trainExp)
                     && stat.at("/updnLine").asText().equals(wayCodeConvert)) {
 
                 for (JsonNode data : stat.at("/data")) {
@@ -576,7 +624,7 @@ public class TransServiceImpl implements TransService {
                 }
             }
         }
-        ObjectNode congestion = objectMapper.createObjectNode();
+
         if (congestionTrain != 0) {
             congestion.put("congestionTrain", congestionTrain);
         } else {
@@ -584,6 +632,7 @@ public class TransServiceImpl implements TransService {
         }
 
         subCon.add(congestion);
+        LOGGER.info("[addSubwayCongestion]: " + congestionTrain);
         return congestionTrain;
     }
 
@@ -599,18 +648,22 @@ public class TransServiceImpl implements TransService {
         String stName = URLEncoder.encode(stationName, StandardCharsets.UTF_8);
 
         Mono<String> results;
-        results = apiWebClient
-                .get()
-                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
-                        .scheme("http")
-                        .host("swopenAPI.seoul.go.kr")
-                        .path("/api/subway/" + subw_key + "/json/realtimeStationArrival/0/100/" + stName)
-                        .build(true)
-                        .toUri()
-                )
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .bodyToMono(String.class);
+        try {
+            results = apiWebClient
+                    .get()
+                    .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                            .scheme("http")
+                            .host("swopenAPI.seoul.go.kr")
+                            .path("/api/subway/" + subw_key + "/json/realtimeStationArrival/0/100/" + stName)
+                            .build(true)
+                            .toUri()
+                    )
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .bodyToMono(String.class);
+        } catch (Exception e) {
+            return btrainDTO;
+        }
 
         JsonNode result;
         try {
@@ -657,23 +710,27 @@ public class TransServiceImpl implements TransService {
         return btrainDTO;
     }
 
-    private StationDTO getSubwayStartEndStation(String stationCode, String weekTag,
+    private StationDTO getSubwayStartEndStation(String stationCode, String weekTag, String trainExp,
                                                 String updnLine, String hour, String minute) {
         StationDTO stationDTO = new StationDTO();
         Mono<String> results;
-        results = apiWebClient
-                .get()
-                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
-                        .scheme("http")
-                        .host("openAPI.seoul.go.kr")
-                        .port("8088")
-                        .path(subw_key + "/json/SearchSTNTimeTableByIDService/1/500/" + stationCode + "/" + weekTag + "/" + updnLine)
-                        .build(true)
-                        .toUri()
-                )
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .bodyToMono(String.class);
+        try {
+            results = apiWebClient
+                    .get()
+                    .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                            .scheme("http")
+                            .host("openAPI.seoul.go.kr")
+                            .port("8088")
+                            .path(subw_key + "/json/SearchSTNTimeTableByIDService/1/500/" + stationCode + "/" + weekTag + "/" + updnLine)
+                            .build(true)
+                            .toUri()
+                    )
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .bodyToMono(String.class);
+        } catch (Exception e) {
+            return stationDTO;
+        }
 
         JsonNode result;
         try {
@@ -689,7 +746,8 @@ public class TransServiceImpl implements TransService {
             String[] arriveTimeSplit = arriveTime.split(":");
             String arriveTimeHour = arriveTimeSplit[0];
             int arriveTimeMinuteDetail = Integer.parseInt(arriveTimeSplit[1]);
-            if (hour.equals(arriveTimeHour) && arriveTimeMinuteDetail > Integer.parseInt(minute)) {
+            String direct = expMap.get(row.at("/EXPRESS_YN").asText());
+            if (direct.equals(trainExp) && hour.equals(arriveTimeHour) && arriveTimeMinuteDetail > Integer.parseInt(minute)) {
                 subwayStartName = row.at("/SUBWAYSNAME").asText();
                 subwayEndName = row.at("/SUBWAYENAME").asText();
                 if (subwayStartName.charAt(subwayStartName.length() - 1) != '역') {
@@ -709,19 +767,23 @@ public class TransServiceImpl implements TransService {
     private String getStationCode(String stationName, String startID) {
         String stName = URLEncoder.encode(stationName, StandardCharsets.UTF_8);
         Mono<String> results;
-        results = apiWebClient
-                .get()
-                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
-                        .scheme("http")
-                        .host("openAPI.seoul.go.kr")
-                        .port("8088")
-                        .path(subw_key + "/json/SearchInfoBySubwayNameService/1/100/" + stName)
-                        .build(true)
-                        .toUri()
-                )
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .bodyToMono(String.class);
+        try {
+            results = apiWebClient
+                    .get()
+                    .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                            .scheme("http")
+                            .host("openAPI.seoul.go.kr")
+                            .port("8088")
+                            .path(subw_key + "/json/SearchInfoBySubwayNameService/1/100/" + stName)
+                            .build(true)
+                            .toUri()
+                    )
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .bodyToMono(String.class);
+        } catch (Exception e) {
+            return null;
+        }
 
         JsonNode result;
         try {
