@@ -32,6 +32,7 @@ public class TransServiceImpl implements TransService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private List<ObjectNode> subPathObject;
     private List<ObjectNode> infoObject;
+    private JsonNode totalResult;
     private final Map<String, String> dayMap = new HashMap<>() {{
         put("MON", "1");
         put("TUE", "1");
@@ -107,7 +108,6 @@ public class TransServiceImpl implements TransService {
         put("D", "1");
     }};
 
-    private JsonNode totalResult;
 
     @Value("${springboot.api.odsay}")
     String odsay_key;
@@ -271,7 +271,7 @@ public class TransServiceImpl implements TransService {
                                 // 실시간 혼잡도 추출이 불가능하다면 통계성으로 추출
                                 if (!congestionDTO.isSuccess()) {
                                     subwayCongestion = addSubwayCongestion(subCongestion, startID, startStation,
-                                            endStation, trainExp, wayCodeConvert, minute);
+                                            endStation, hour, minute, trainExp, wayCodeConvert);
                                     // 지하철 혼잡도가 0이라면 no info 정보 추가
                                     if (subwayCongestion == -1 || subwayCongestion == 0) {
                                         continue;
@@ -286,7 +286,7 @@ public class TransServiceImpl implements TransService {
                             // 출발역과 도착역 전부 null이 아닐 경우 혼잡도 정보 추가
                             if (startStation != null && endStation != null) {
                                 int subwayCongestion = addSubwayCongestion(subCongestion, startID, startStation,
-                                        endStation, trainExp, wayCodeConvert, minute);
+                                        endStation, hour, minute, trainExp, wayCodeConvert);
                                 // 지하철 혼잡도가 0이라면 no info 정보 추가
                                 if (subwayCongestion == -1 || subwayCongestion == 0) {
                                     continue;
@@ -578,8 +578,8 @@ public class TransServiceImpl implements TransService {
     }
 
     // SK open API 사용 -> 지하철 혼잡도 정보 받음
-    private int addSubwayCongestion(ArrayNode subCon, String stationCode, String start, String end,
-                                    String trainExp, String wayCodeConvert, String minute) {
+    private int addSubwayCongestion(ArrayNode subCon, String stationCode, String start, String end, String hour, String minute,
+                                    String trainExp, String wayCodeConvert) {
         ObjectNode congestion = objectMapper.createObjectNode();
         Mono<String> results;
         try {
@@ -589,6 +589,7 @@ public class TransServiceImpl implements TransService {
                             .scheme("https")
                             .host("apis.openapi.sk.com")
                             .path("/puzzle/congestion-train/stat/stations/" + stationCode)
+                            .queryParam("hh", hour)
                             .build(true)
                             .toUri()
                     )
