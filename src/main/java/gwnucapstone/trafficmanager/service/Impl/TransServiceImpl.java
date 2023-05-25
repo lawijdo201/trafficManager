@@ -103,7 +103,7 @@ public class TransServiceImpl implements TransService {
         put("어린이대공원", "어린이대공원(세종대)");
         put("숭실대입구", "숭실대입구(살피재)");
     }};
-    private Map<String, String> expMap = new HashMap<>() {{
+    private final Map<String, String> expMap = new HashMap<>() {{
         put("G", "0");
         put("D", "1");
     }};
@@ -210,7 +210,7 @@ public class TransServiceImpl implements TransService {
                         count++;
                     }
                     // 결과 값에 버스 도착 정보, 혼잡도 정보 추가
-                    subPathObject.get(transIndex).put("arriveCongestion", busArrCon);
+                    subPathObject.get(transIndex).set("arriveCongestion", busArrCon);
                 }
                 // 지하철
                 else {
@@ -260,8 +260,6 @@ public class TransServiceImpl implements TransService {
                         String endStation = stationDTO.getEndStationName();
 
                         // 2, 3호선 혼잡도 처리
-                        LOGGER.info(pathIndex + " | " + transIndex + " | " + intLine);
-                        LOGGER.info("[startName]: " + startStation + " | " + "[endName]: " + endStation);
                         if (intLine >= 1002 && intLine <= 1003) {
                             String line = lineNumber.substring(3, 4);
                             // 열차 번호가 추출됐다면
@@ -313,8 +311,8 @@ public class TransServiceImpl implements TransService {
                         count++;
                     }
                     // 결과 값에 지하철 도착 정보, 혼잡도 정보 추가
-                    subPathObject.get(transIndex).put("arrive", subArrive);
-                    subPathObject.get(transIndex).put("congestion", subCongestion);
+                    subPathObject.get(transIndex).set("arrive", subArrive);
+                    subPathObject.get(transIndex).set("congestion", subCongestion);
                 }
                 transIndex++;
             }
@@ -522,7 +520,6 @@ public class TransServiceImpl implements TransService {
             busAverage = (busCongestion1 + busCongestion2) / 2;
             arrCon.add(arriveCongestion);
         }
-        LOGGER.info("[addBusArriveAndCongestion]: " + busAverage);
         return busAverage;
     }
 
@@ -573,7 +570,6 @@ public class TransServiceImpl implements TransService {
         subCon.add(congestion);                 // 실시간 혼잡도 데이터 추가
         congestionDTO.setSuccess(true);
         congestionDTO.setCongestion(Integer.parseInt(conTrain));
-        LOGGER.info("[addRealTimeSubwayCongestion]: " + congestionDTO.getCongestion());
         return congestionDTO;
     }
 
@@ -626,14 +622,13 @@ public class TransServiceImpl implements TransService {
             }
         }
 
-        if (congestionTrain != 0) {
-            congestion.put("congestionTrain", congestionTrain);
+        if (!Integer.toString(congestionTrain).equals("0")) {
+            congestion.put("congestionTrain", Integer.toString(congestionTrain));
         } else {
             congestion.put("congestionTrain", "no info");
         }
 
         subCon.add(congestion);
-        LOGGER.info("[addSubwayCongestion]: " + congestionTrain);
         return congestionTrain;
     }
 
