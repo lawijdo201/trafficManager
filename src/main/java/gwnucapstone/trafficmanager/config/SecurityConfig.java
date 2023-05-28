@@ -34,14 +34,7 @@ public class SecurityConfig {
                 .csrf().disable()
                 .cors().and()
                 .authorizeHttpRequests((requests) -> requests
-                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/api/users/join", "/api/users/login", "/api/users/findId", "/api/users/findPw", "api/users/hello").permitAll()
-                        .requestMatchers("/api/users/info", "/api/users/delete", "/api/users/update").permitAll()
-                        //.requestMatchers("/api/vi/reviews").permitAll() //hasRole()
-                        .requestMatchers("/api/users/authenticate").permitAll()
-                        .requestMatchers("/api/trans/**").permitAll()
-                        .requestMatchers("/api/check/**").permitAll()
-                        .requestMatchers("/swagger-ui.html").permitAll()
+                        .requestMatchers("/api/users/join", "/api/users/login", "/api/users/findId", "/api/users/findPw").permitAll()
                         .anyRequest().authenticated()       //인증(SecurityContext Holder에 인증 완료된 상태로 저장)이 안된 authentication을 가진 요청은 모두 차단
                 )
                 .sessionManagement()
