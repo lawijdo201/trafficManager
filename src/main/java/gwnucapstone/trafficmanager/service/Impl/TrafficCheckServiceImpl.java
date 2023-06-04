@@ -49,8 +49,238 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
     //주변 역 검색
     @Override
     public JSONObject sortTraffic(CurrentCoordinates currentCoordinates) {
+        String str = "{\n" +
+                "    \"Bus\": [\n" +
+                "        {\n" +
+                "            \"busNo\": \"N15\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"N16\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"6102\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"101\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"106\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"107\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"1126\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"130\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"140\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"141\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"142\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"150\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"1127\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"160\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"36\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"133\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"118\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"8101(평일운행)\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106522\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"도봉05\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106487\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"도봉06\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106487\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"도봉07\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106487\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"N15\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"N16\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"6102\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"106\",\n" +
+                "            \"traffic\": \"80%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"107\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"130\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"140\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"141\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"142\",\n" +
+                "            \"traffic\": \"80%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"150\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"160\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"36\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"133\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"118\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"8101(평일운행)\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106530\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"101\",\n" +
+                "            \"traffic\": \"80%\",\n" +
+                "            \"stationID\": \"106492\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"1126\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106492\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"1127\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"106492\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"도봉05\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106492\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"도봉06\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106492\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"도봉07\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"106492\"\n" +
+                "        }\n" +
+                "    ],\n" +
+                "    \"Subway\": [\n" +
+                "        {\n" +
+                "            \"stationName\": \"쌍문\",\n" +
+                "            \"upline\": 13,\n" +
+                "            \"downline\": 0\n" +
+                "        }\n" +
+                "    ]\n" +
+                "}";
 
-        JSONObject TrafficObj = new JSONObject();
+        JSONObject jsonObject = null;
+        try {
+            JSONParser parser = new JSONParser();
+            jsonObject = (JSONObject) parser.parse(str);
+        } catch(ParseException e) {
+            System.out.println(e.getMessage());
+        }
+        return jsonObject;
+
+        /*JSONObject TrafficObj = new JSONObject();
         JSONArray BusTrafficObj = new JSONArray();
         JSONArray SubTrafficObj = new JSONArray();
         TrafficObj.put("Bus", BusTrafficObj);
@@ -97,13 +327,33 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
         }
-        return TrafficObj;
+        return TrafficObj;*/
     }
 
     //지하철역 검색을 통해 그 역의 혼잡도를 가져온다.
     @Override
     public JSONObject searchSubTraffic(String name) {
-        JSONObject subway = new JSONObject();
+        String str = "{\n" +
+                "    \"홍제\": [\n" +
+                "        {\n" +
+                "            \"line\": \"03호선\",\n" +
+                "            \"stationName\": \"홍제\",\n" +
+                "            \"upline\": 12,\n" +
+                "            \"downline\": 0\n" +
+                "        }\n" +
+                "    ]\n" +
+                "}";
+
+        JSONObject jsonObject = null;
+        try {
+            JSONParser parser = new JSONParser();
+            jsonObject = (JSONObject) parser.parse(str);
+        } catch(ParseException e) {
+            System.out.println(e.getMessage());
+        }
+        return jsonObject;
+
+        /*JSONObject subway = new JSONObject();
         JSONArray stationArr = new JSONArray();
         subway.put(name, stationArr);
 
@@ -142,13 +392,72 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
         } catch (ParseException e) {
             throw new RuntimeException(e);
         }
-        return subway;
+        return subway;*/
     }
 
     //버스 정류장을 검색해 혼잡도를 가져온다.
     @Override
     public JSONObject searchbusTraffic(String name) {
-        JSONObject BusSearch = new JSONObject();
+        String str = "{\n" +
+                "    \"result\": [\n" +
+                "        {\n" +
+                "            \"busNo\": \"7734\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"103104\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"7017\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"103104\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"7019\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"103104\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"7021\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"103104\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"7611\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"103104\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"7612\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"103104\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"7713\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"103104\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"N75\",\n" +
+                "            \"traffic\": \"0%\",\n" +
+                "            \"stationID\": \"103104\"\n" +
+                "        },\n" +
+                "        {\n" +
+                "            \"busNo\": \"8773-001\",\n" +
+                "            \"traffic\": \"60%\",\n" +
+                "            \"stationID\": \"103104\"\n" +
+                "        }\n" +
+                "    ]\n" +
+                "}\n";
+
+        JSONObject jsonObject = null;
+        try {
+            JSONParser parser = new JSONParser();
+            jsonObject = (JSONObject) parser.parse(str);
+        } catch(ParseException e) {
+            System.out.println(e.getMessage());
+        }
+        return jsonObject;
+
+        /*JSONObject BusSearch = new JSONObject();
         JSONArray BusTrafficObj = new JSONArray();
         BusSearch.put("result", BusTrafficObj);
         String encodedName = URLEncoder.encode(name, StandardCharsets.UTF_8);
@@ -203,7 +512,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
             throw new RuntimeException(e);
         }
 
-        return BusSearch;
+        return BusSearch;*/
     }
 
 

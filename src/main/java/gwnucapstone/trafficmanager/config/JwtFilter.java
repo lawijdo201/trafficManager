@@ -52,7 +52,7 @@ public class JwtFilter extends OncePerRequestFilter {
         Boolean checkBlacklist = jwtTokenProvider.isBlacklist(token);
         if (checkBlacklist) {
             log.info("잘못된 접근입니다. 로그인을 해주세요.");
-            filterChain.doFilter(request, response);  // <---- 이 코드 때문에 잘못된 접근임에도 실행이 되는 듯? 지우니까 로그아웃 하고나서 토큰으로 다른 기능이 실행 안됨.
+            filterChain.doFilter(request, response);
             return;
         }
 

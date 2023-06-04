@@ -9,13 +9,13 @@ import org.springframework.validation.BindingResult;
 import java.util.Map;
 
 public interface UserService {
-    boolean saveMember(String id, String pw, String name, String email);
+    void saveMember(String id, String pw, String name, String email);
 
     UserResponseDTO login(String id, String pw);
 
-    boolean deleteMember(String id, String pw);
+    void deleteMember(String id, String pw);
 
-    boolean updateMember(String token, UserUpdateDTO dto);
+    void updateMember(String token, UserUpdateDTO dto);
 
     User getUser(String token, String pw);
 
@@ -23,5 +23,5 @@ public interface UserService {
 
     JsonObject validateHandling(BindingResult bindingResult);
 
-    void logout(String id, String AccessToken);
+    void logout(String accessToken);
 }

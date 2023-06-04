@@ -1,6 +1,5 @@
 package gwnucapstone.trafficmanager.controller;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import gwnucapstone.trafficmanager.data.dto.trans.DirectionRequestDTO;
 import gwnucapstone.trafficmanager.service.TransService;
 import org.slf4j.Logger;
@@ -22,7 +21,7 @@ public class TransController {
     }
 
     @PostMapping("/searchPath")
-    public ResponseEntity<String> searchPath(@RequestHeader String AUTHORIZATION, @RequestBody DirectionRequestDTO dto) {
+    public ResponseEntity<String> searchPath(@RequestBody DirectionRequestDTO dto) {
         String result = transService.getPathWithCongestion(dto.getSx(), dto.getSy(), dto.getEx(), dto.getEy());
         return ResponseEntity.ok().body(result);
     }

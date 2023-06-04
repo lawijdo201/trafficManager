@@ -3,6 +3,7 @@ package gwnucapstone.trafficmanager.service.Impl;
 
 import com.google.gson.JsonObject;
 import gwnucapstone.trafficmanager.data.dao.UserDAO;
+import gwnucapstone.trafficmanager.exception.UserException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import gwnucapstone.trafficmanager.data.dto.UserResponseDTO;
 import gwnucapstone.trafficmanager.data.dto.UserUpdateDTO;
@@ -42,12 +43,11 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public boolean saveMember(String id, String pw, String name, String email) {
+    public void saveMember(String id, String pw, String name, String email) {
         //id 중복체크
         if (userDAO.findMember(id) || userDAO.existsByNameAndEmail(name, email)) {
             LOGGER.info("if문 진입");
-            return false;
-//            throw new LoginException(ErrorCode.ID_DUPLICATED, id + "아이디는 이미 있습니다.");
+            throw new LoginException(ErrorCode.ID_DUPLICATED, "이미 존재하는 아이디 혹은 사용자입니다.");
         }
 
         LOGGER.info("[saveMember] User 생성 시작");
@@ -61,25 +61,19 @@ public class UserServiceImpl implements UserService {
         //DAO에 전달
         userDAO.saveMember(user);
         LOGGER.info("[saveMember] User 생성 완료");
-        return true;
     }
 
     @Override
     public UserResponseDTO login(String id, String pw) {
-//        Optional<User> user = userDAO.findByid(id);
-        User user = userDAO.findByid(id).orElse(null);
+        Optional<User> user = userDAO.findByid(id);
 
         //1. id가 없음
-//        user.orElseThrow(() -> new LoginException(ErrorCode.ID_NOT_FOUND, id + "는 없는 아이디입니다."));
-        if (user == null) {
-            return null;
-        }
+        user.orElseThrow(() -> new LoginException(ErrorCode.ID_NOT_FOUND, "존재하지 않는 아이디입니다."));
 
         //2. passWord 틀림
-        LOGGER.info("getPw():{} pw:{}", pw, user.getPw());
-        if (!encoder.matches(pw, user.getPw())) {
-            return null;
-//            throw new LoginException(ErrorCode.INVALID_PASSWORD, "틀린 비밀번호입니다.");
+        LOGGER.info("getPw():{} pw:{}", pw, user.get().getPw());
+        if (!encoder.matches(pw, user.get().getPw())) {
+            throw new LoginException(ErrorCode.INVALID_PASSWORD, "비밀번호가 일치하지 않습니다.");
         }
 
         //3. 토큰 생성후 Refresh토큰 redis에 저장 후 return 하기
@@ -94,13 +88,13 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void logout(String id, String AccessToken) {
+    public void logout(String accessToken) {
         //redis에서 access토큰 블랙리스트 등록
         long tokenValidMillisecond = 1000 * 60 * 60L;
-        String token = AccessToken.split(" ")[1]; //ex token :Bearer eysd~
+        String token = accessToken.split(" ")[1]; //ex token :Bearer eysd~
         redisTemplate.opsForValue().set(token, "logout", tokenValidMillisecond, TimeUnit.MILLISECONDS);
         //redis에서 refresh 토큰 삭제
-        jwtTokenProvider.deleteRedis(id);
+        jwtTokenProvider.deleteRedis(jwtTokenProvider.getUsername(token));
         SecurityContextHolder.clearContext();
     }
 
@@ -110,13 +104,6 @@ public class UserServiceImpl implements UserService {
         return null;
     }*/
 
-    /**
-     * 수정, 탈퇴, 조회 시 필요한 유저 정보를 불러오는 메서드
-     *
-     * @param token 로그인 시 발급받은 토큰
-     * @param pw    현재 비밀번호
-     * @return User 객체
-     */
     @Override
     public User getUser(String token, String pw) {
         token = token.split(" ")[1];
@@ -136,25 +123,19 @@ public class UserServiceImpl implements UserService {
                     return user;
                 } else {
                     LOGGER.info("[getUser] 패스워드가 일치하지 않습니다.");
-                    return null;
+                    throw new UserException(ErrorCode.INVALID_PASSWORD, "비밀번호가 일치하지 않습니다.");
                 }
             } else {
                 LOGGER.info("[getUser] 해당 사용자는 존재하지 않습니다.");
-                return null;
+                throw new UserException(ErrorCode.ID_NOT_FOUND, "존재하지 않는 아이디입니다.");
             }
         }
         LOGGER.info("[getUser] 만료된 토큰입니다.");
-        return null;
+        throw new UserException(ErrorCode.INVALID_PASSWORD, "잘못된 접근입니다.");
     }
 
-    /**
-     * 회원 탈퇴 메서드
-     *
-     * @param token 로그인 시 발급받은 토큰
-     * @param pw    인증을 위한 현재 비밀번호
-     */
     @Override
-    public boolean deleteMember(String token, String pw) {
+    public void deleteMember(String token, String pw) {
         User user = getUser(token, pw);
 
         if (user != null) {
@@ -166,23 +147,16 @@ public class UserServiceImpl implements UserService {
             if (encoder.matches(pw, originalPw)) {
                 userDAO.deleteMember(id);
                 SecurityContextHolder.clearContext();
-                return true;
             } else {
-                return false;
+                throw new UserException(ErrorCode.INVALID_PASSWORD, "비밀번호가 일치하지 않습니다.");
             }
         } else {
-            return false;
+            throw new UserException(ErrorCode.ID_NOT_FOUND, "아이디가 존재하지 않습니다.");
         }
     }
 
-    /**
-     * 유저 정보 업데이트 메서드
-     *
-     * @param token 로그인 시 발급받는 토큰
-     * @param dto   현재 비밀번호, 변경할 비밀번호, 변경할 이메일
-     */
     @Override
-    public boolean updateMember(String token, UserUpdateDTO dto) {
+    public void updateMember(String token, UserUpdateDTO dto) {
         User user = getUser(token, dto.getInputPw());
 
         if (user != null) {
@@ -193,38 +167,22 @@ public class UserServiceImpl implements UserService {
             // PW 비교
             if (encoder.matches(dto.getInputPw(), originalPw)) {
                 userDAO.updateMember(id, encoder.encode(dto.getPw()), dto.getEmail());
-                return true;
             } else {
-                return false;
+                throw new UserException(ErrorCode.INVALID_PASSWORD, "비밀번호가 일치하지 않습니다.");
             }
         } else {
-            return false;
+            throw new UserException(ErrorCode.ID_NOT_FOUND, "아이디가 존재하지 않습니다.");
         }
     }
 
-
-    /**
-     * 아이디, 비밀번호 찾기 시 사용되는 유저 찾기
-     *
-     * @param name  사용자 이름
-     * @param email 사용자 이메일
-     * @return 유저 아이디
-     */
     @Override
     public String findUserId(String name, String email) {
-        Optional<User> userOptional = userDAO.findByNameAndEmail(name, email);
+        Optional<User> user = userDAO.findByNameAndEmail(name, email);
+        user.orElseThrow(() -> new UserException(ErrorCode.ID_NOT_FOUND, "아이디가 존재하지 않거나 이메일이 일치하지 않습니다."));
 
-        return userOptional.map(User::getId).orElse(null);
+        return user.get().getId();
     }
 
-
-    /**
-     * 회원 가입 시 사용되는 유효성 검사 핸들러
-     *
-     * @param bindingResult
-     * @return Map 형태의 유효성 검사 에러 메시지
-     * ex) valid_password="비밀번호는 8~16자리수여야 합니다. 영문 대소문자, 숫자, 특수문자를 1개 이상 포함해야 합니다."
-     */
     @Override
     public JsonObject validateHandling(BindingResult bindingResult) {
         JsonObject validatorResult = new JsonObject();

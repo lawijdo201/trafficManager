@@ -26,11 +26,6 @@ public class EmailServiceImpl implements EmailService {
         this.encoder = encoder;
     }
 
-    /**
-     * 메일 전송 메서드
-     *
-     * @param mailDto 메일 내용 데이터(DTO)
-     */
     @Override
     public void sendEmail(MailDTO mailDto) {
         SimpleMailMessage message = new SimpleMailMessage();
@@ -42,14 +37,6 @@ public class EmailServiceImpl implements EmailService {
         LOGGER.info("[sendEmailForId] 이메일 전송 완료");
     }
 
-    /**
-     * 아이디 찾기 메일 내용 빌드
-     *
-     * @param email 수신자 이메일
-     * @param id    사용자 아이디
-     * @param name  사용자 이름
-     * @return 메일 내용 데이터(DTO)
-     */
     @Override
     public MailDTO createMessageForId(String email, String id, String name) {
         MailDTO dto = new MailDTO();
@@ -59,14 +46,6 @@ public class EmailServiceImpl implements EmailService {
         return dto;
     }
 
-    /**
-     * 비밀번호 찾기 메일 내용 빌드
-     *
-     * @param email 수신자 이메일
-     * @param id    사용자 아이디
-     * @param name  사용자 이름
-     * @return 메일 내용 데이터(DTO)
-     */
     @Override
     public MailDTO createMessageForPw(String email, String id, String name) {
         String pw = getTempPassword();
@@ -79,23 +58,11 @@ public class EmailServiceImpl implements EmailService {
         return dto;
     }
 
-    /**
-     * 비밀번호 찾기 요청 시 임시 비밀번호 발급을 위한 비밀번호 업데이트
-     *
-     * @param pw 현재 패스워드
-     * @param id 사용자 아이디
-     */
     public void updatePassword(String pw, String id) {
         String modifiedPw = encoder.encode(pw);
         userDAO.updateUserPassword(id, modifiedPw);
     }
 
-
-    /**
-     * 무작위로 패스워드 생성 메서드
-     *
-     * @return 임시 패스워드(String)
-     */
     public String getTempPassword() {
         char[] charSet = new char[]{'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
                 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'};
