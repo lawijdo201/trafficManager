@@ -43,7 +43,7 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
     @Value("${seoul.traffic.apikey}")
     String seoulKey;
 
-    @Value(("${seoul.opendata.apikey}"))
+    @Value("${seoul.opendata.apikey}")
     String opendataKey;
 
     //주변 역 검색
@@ -135,7 +135,8 @@ public class TrafficCheckServiceImpl implements TrafficCheckService {
                 JSONObject code = (JSONObject) o;
                 long st_code = Long.parseLong(code.get("FR_CODE").toString());
                 JSONObject station = subwayTraffic(name, st_code);
-                station.put("line", code.get("LINE_NUM"));
+                station.put("upline", code.get("UPLINE_NUM"));
+                station.put("downline", code.get("DOWNLINE_NUM"));
                 stationArr.add(station);
             }
         } catch (ParseException e) {

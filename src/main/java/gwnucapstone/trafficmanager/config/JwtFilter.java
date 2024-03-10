@@ -49,6 +49,7 @@ public class JwtFilter extends OncePerRequestFilter {
         //토큰 추출
         String token = authorization.split(" ")[1]; //ex token :Bearer eysd~
 
+        //로그아웃된 토큰인지 체크
         Boolean checkBlacklist = jwtTokenProvider.isBlacklist(token);
         if (checkBlacklist) {
             log.info("잘못된 접근입니다. 로그인을 해주세요.");
@@ -63,7 +64,7 @@ public class JwtFilter extends OncePerRequestFilter {
             // 만료된 토큰인 경우 refresh token 이용
             String refreshToken = request.getHeader("refreshToken");
             log.error("유효성 검사");
-            UsernamePasswordAuthenticationToken authentication = jwtTokenProvider.getAuthentication(token);
+            UsernamePasswordAuthenticationToken authentication = jwtTokenProvider.getAuthentication(refreshToken);
             log.error("refresh토큰이 만료되지 않았으면");
 
 

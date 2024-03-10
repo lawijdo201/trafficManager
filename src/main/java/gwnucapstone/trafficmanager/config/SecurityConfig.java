@@ -34,9 +34,7 @@ public class SecurityConfig {
                 .csrf().disable()
                 .cors().and()
                 .authorizeHttpRequests((requests) -> requests
-                        .requestMatchers("/api/users/join", "/api/users/login", "/api/users/findId", "/api/users/findPw").permitAll()
-                        .requestMatchers("/api/trans/searchPath").permitAll()
-                        .requestMatchers("/api/check/**").permitAll()
+                        .requestMatchers("/api/users/join", "/api/users/login").permitAll()
                         .anyRequest().authenticated()       //인증(SecurityContext Holder에 인증 완료된 상태로 저장)이 안된 authentication을 가진 요청은 모두 차단
                 )
                 .sessionManagement()

@@ -43,8 +43,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void saveMember(String id, String pw, String name, String email) {
-        //id 중복체크
+    public void saveMember(String id, String pw, String name, String email) {        //id 중복체크
         if (userDAO.findMember(id) || userDAO.existsByNameAndEmail(name, email)) {
             LOGGER.info("if문 진입");
             throw new LoginException(ErrorCode.ID_DUPLICATED, "이미 존재하는 아이디 혹은 사용자입니다.");
@@ -53,8 +52,7 @@ public class UserServiceImpl implements UserService {
         LOGGER.info("[saveMember] User 생성 시작");
         //중복된것이 없으면 Entity 생성
         User user = User.builder()
-                .id(id)
-                .pw(encoder.encode(pw))
+                .id(id).pw(encoder.encode(pw))
                 .name(name)
                 .email(email).build();
 
