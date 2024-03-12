@@ -50,11 +50,11 @@ public class UserController {
             LOGGER.info("[join] 회원가입 완료");
             response.addProperty("result", "success");
             return ResponseEntity.ok().body(response.toString());
-        } catch (Exception e) {
+        } catch (LoginException e) {
             LOGGER.info("[join] 회원가입 실패 (이미 존재하는 아이디 or 이미 존재하는 사용자)");
             response.addProperty("result", "failed");
-            response.addProperty("msg", "already exists ID or User");
-            return ResponseEntity.badRequest().body(response.toString());
+            response.addProperty("msg", e.getMessage());
+            return ResponseEntity.status(e.getErrorCode().getHttpStatus()).body(response.toString());
         }
     }
 
