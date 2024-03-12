@@ -81,11 +81,15 @@ public class UserController {
     @PostMapping(value = "/logout")
     public ResponseEntity<String> logout(@RequestHeader String AUTHORIZATION, @RequestBody UserLogoutDTO dto) {
         JsonObject response = new JsonObject();
-        //LOGGER.info("{}, {}",dto.getId(), dto.getToken());
-        userService.logout(AUTHORIZATION);
-        LOGGER.info("[logout] 로그아웃 완료");
-        response.addProperty("result", "success");
-        return ResponseEntity.ok().body(response.toString());
+        try {
+            //LOGGER.info("{}, {}",dto.getId(), dto.getToken());
+            userService.logout(AUTHORIZATION);
+            LOGGER.info("[logout] 로그아웃 완료");
+            response.addProperty("result", "success");
+            return ResponseEntity.ok().body(response.toString());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(response.toString());
+        }
     }
 
     @PostMapping(value = "/update")
