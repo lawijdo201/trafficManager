@@ -3,6 +3,7 @@ package gwnucapstone.trafficmanager.controller;
 import com.google.gson.JsonObject;
 import gwnucapstone.trafficmanager.data.dto.*;
 import gwnucapstone.trafficmanager.data.entity.User;
+import gwnucapstone.trafficmanager.exception.LoginException;
 import gwnucapstone.trafficmanager.service.EmailService;
 import gwnucapstone.trafficmanager.service.UserService;
 import jakarta.validation.Valid;
@@ -13,6 +14,9 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
+
+import static gwnucapstone.trafficmanager.exception.ErrorCode.ID_NOT_FOUND;
+import static gwnucapstone.trafficmanager.exception.ErrorCode.INVALID_PASSWORD;
 
 @RestController
 @RequestMapping("/api/users")
@@ -58,18 +62,18 @@ public class UserController {
     public ResponseEntity<String> login(@RequestBody UserLoginDTO dto) {
         HttpHeaders headers = new HttpHeaders();
         JsonObject response = new JsonObject();
-        UserResponseDTO userResponseDTO = userService.login(dto.getId(), dto.getPw());
-        if (userResponseDTO != null) {
+        try {
+            UserResponseDTO userResponseDTO = userService.login(dto.getId(), dto.getPw());
             LOGGER.info("[login] 로그인 완료");
             headers.set("AUTHORIZATION", userResponseDTO.getAUTHORIZATION());
             headers.set("refreshToken", userResponseDTO.getRefreshToken());
             headers.set("refreshTokenExpirationTime", Long.toString(userResponseDTO.getRefreshTokenExpirationTime()));
             response.addProperty("result", "success");
             return ResponseEntity.ok().headers(headers).body(response.toString());
-        } else {
-            LOGGER.info("[login] 로그인 실패 (아이디가 존재하지 않거나 옳지 않은 패스워드)");
+        } catch (LoginException e) {
+            //에러 발생시
             response.addProperty("result", "failed");
-            response.addProperty("msg", "Not exists Id or wrong Password");
+            response.addProperty("msg", e.getMessage());
             return ResponseEntity.badRequest().body(response.toString());
         }
     }
