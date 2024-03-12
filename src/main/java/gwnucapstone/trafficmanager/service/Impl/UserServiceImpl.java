@@ -96,11 +96,6 @@ public class UserServiceImpl implements UserService {
         SecurityContextHolder.clearContext();
     }
 
-/*    @Override
-    public UserResponseDTO logout(String AccessToken, String RefreshToken){
-        Authentication authentication
-        return null;
-    }*/
 
     @Override
     public User getUser(String token, String pw) {
