@@ -54,7 +54,7 @@ public class UserController {
             LOGGER.info("[join] 회원가입 실패 (이미 존재하는 아이디 or 이미 존재하는 사용자)");
             response.addProperty("result", "failed");
             response.addProperty("msg", e.getMessage());
-            return ResponseEntity.status(e.getErrorCode().getHttpStatus()).body(response.toString());
+            return ResponseEntity.status(e.getErrorCode().getHttpStatus()).body(e.getMessage());
         }
     }
 
@@ -74,7 +74,7 @@ public class UserController {
             //에러 발생시
             response.addProperty("result", "failed");
             response.addProperty("msg", e.getMessage());
-            return ResponseEntity.badRequest().body(response.toString());
+            return ResponseEntity.status(e.getErrorCode().getHttpStatus()).body(e.getMessage());
         }
     }
 
@@ -87,8 +87,8 @@ public class UserController {
             LOGGER.info("[logout] 로그아웃 완료");
             response.addProperty("result", "success");
             return ResponseEntity.ok().body(response.toString());
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(response.toString());
+        } catch (LoginException e) {
+            return ResponseEntity.status(e.getErrorCode().getHttpStatus()).body(e.getMessage());
         }
     }
 

@@ -87,13 +87,17 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void logout(String accessToken) {
-        //redis에서 access토큰 블랙리스트 등록
-        long tokenValidMillisecond = 1000 * 60 * 60L;
-        String token = accessToken.split(" ")[1]; //ex token :Bearer eysd~
-        redisTemplate.opsForValue().set(token, "logout", tokenValidMillisecond, TimeUnit.MILLISECONDS);
-        //redis에서 refresh 토큰 삭제
-        jwtTokenProvider.deleteRedis(jwtTokenProvider.getUsername(token));
-        SecurityContextHolder.clearContext();
+        try {
+            //redis에서 access토큰 블랙리스트 등록
+            long tokenValidMillisecond = 1000 * 60 * 60L;
+            String token = accessToken.split(" ")[1]; //ex token :Bearer eysd~
+            redisTemplate.opsForValue().set(token, "logout", tokenValidMillisecond, TimeUnit.MILLISECONDS);
+            //redis에서 refresh 토큰 삭제
+            jwtTokenProvider.deleteRedis(jwtTokenProvider.getUsername(token));
+            SecurityContextHolder.clearContext();
+        }catch (Exception e){
+            throw new LoginException(ErrorCode.BAD_REQUEST, "로그아웃에서 에러가 발생했습니다.");
+        }
     }
 
 
