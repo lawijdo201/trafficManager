@@ -6,6 +6,8 @@ import lombok.Getter;
 @Data
 @Getter
 public class DirectionRequestDTO {
+    private String sessionId;
+
     private String sx;
 
     private String sy;

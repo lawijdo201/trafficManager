@@ -4,36 +4,63 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.gson.Gson;
 import gwnucapstone.trafficmanager.data.dto.trans.*;
+import gwnucapstone.trafficmanager.data.dto.trans.BusInfoData.BusResponse;
+import gwnucapstone.trafficmanager.data.dto.trans.SubCodeData.SubwayCodeRow;
+import gwnucapstone.trafficmanager.data.dto.trans.SubCodeData.SubwayCodeResponse;
+import gwnucapstone.trafficmanager.data.dto.trans.SubConestionData.*;
+import gwnucapstone.trafficmanager.data.dto.trans.SubInfoData.RealtimeArrival;
+import gwnucapstone.trafficmanager.data.dto.trans.SubInfoData.SubwayResponse;
+import gwnucapstone.trafficmanager.data.dto.trans.SubRealTimeCongestionData.CongestionResult;
+import gwnucapstone.trafficmanager.data.dto.trans.SubRealTimeCongestionData.RtConData;
+import gwnucapstone.trafficmanager.data.dto.trans.SubRealTimeCongestionData.SubRealTimeCongestionResponse;
+import gwnucapstone.trafficmanager.data.dto.trans.SubTimeTableData.SubwayTimeTableResponse;
+import gwnucapstone.trafficmanager.data.dto.trans.SubTimeTableData.TimeTableRow;
+import gwnucapstone.trafficmanager.data.dto.trans.pathData.*;
+import gwnucapstone.trafficmanager.handler.MyWebSocketHandler;
 import gwnucapstone.trafficmanager.service.TransService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.util.Pair;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriComponentsBuilder;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.TextStyle;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 @Service
 public class TransServiceImpl implements TransService {
     private final WebClient apiWebClient;
 
+    private final MyWebSocketHandler myWebSocketHandler = new MyWebSocketHandler();
+
     private final Logger LOGGER = LoggerFactory.getLogger(TransServiceImpl.class);
+
     private final ObjectMapper objectMapper = new ObjectMapper();
+
     private List<ObjectNode> subPathObject;
+
     private List<ObjectNode> infoObject;
+
     private ObjectNode totalResult;
+
     private ArrayNode pathArray;
+
     private final Map<String, String> dayMap = new HashMap<>() {{
         put("MON", "1");
         put("TUE", "1");
@@ -43,6 +70,7 @@ public class TransServiceImpl implements TransService {
         put("SAT", "2");
         put("SUN", "3");
     }};
+
     private final Map<String, String> lineNameMap = new HashMap<>() {{
         put("1호선", "1001");
         put("2호선", "1002");
@@ -62,6 +90,7 @@ public class TransServiceImpl implements TransService {
         put("신분당선", "1077");
         put("우이신설선", "1092");
     }};
+
     private final Map<String, String> arvlCodeMap = new HashMap<>() {{
         put("0", "진입");
         put("1", "도착");
@@ -71,12 +100,14 @@ public class TransServiceImpl implements TransService {
         put("5", "전역 도착");
         put("99", "운행 중");
     }};
+
     private final Map<Integer, Integer> busConMap = new HashMap<>() {{
         put(3, 25);
         put(4, 60);
         put(5, 100);
         put(0, 0);
     }};
+
     private final Map<String, String> stationMap = new HashMap<>() {{
         put("증산", "증산(명지대앞)");
         put("응암", "응암순환(상선)");
@@ -104,11 +135,11 @@ public class TransServiceImpl implements TransService {
         put("어린이대공원", "어린이대공원(세종대)");
         put("숭실대입구", "숭실대입구(살피재)");
     }};
+
     private final Map<String, String> expMap = new HashMap<>() {{
         put("G", "0");
         put("D", "1");
     }};
-
 
     @Value("${springboot.api.odsay}")
     String odsay_key;
@@ -122,864 +153,583 @@ public class TransServiceImpl implements TransService {
     @Value("${springboot.api.subway}")
     String subw_key;
 
-
     @Autowired
-    public TransServiceImpl(WebClient apiWebClient) {
-        this.apiWebClient = apiWebClient;
+    public TransServiceImpl() {
+        this.apiWebClient = WebClient.builder().build();
     }
 
+    @Override
+    public PathResult getPathWithCongestionImproved(String sessionId, String sx, String sy, String ex, String ey) {
+        long flowStartTime = System.currentTimeMillis();
+
+        Gson gson = new Gson();
+
+        Mono<PathResult> pathResultMono = getAllPathImproved(sx, sy, ex, ey);
+
+        return pathResultMono
+                .doOnNext(finalResult -> {
+                    // 버스 정보 API를 호출하기 위한 데이터 추출
+                    Mono<List<Integer>> startIDList = getStartID(finalResult);
+                    Mono<List<List<Integer>>> busIDList = getBusIDList(finalResult);
+                    // 버스 도착 정보, 혼잡도 정보 호출
+                    callBusArrivalInfo(startIDList, busIDList)
+                            .subscribe(busInfo -> {
+                                LOGGER.info("busInfo 전송 준비");
+                                LOGGER.info("bus Info : {}", busInfo);
+
+                                Map<String, Object> busInfoMessage = new HashMap<>();
+                                busInfoMessage.put("type", "bus");
+                                busInfoMessage.put("data", gson.toJson(busInfo));
+
+                                String jsonMessage = gson.toJson(busInfoMessage);
+
+                                // WebSocket을 통해 직접 sessionId 기반으로 메시지 전송
+                                myWebSocketHandler.sendMessageToSession(sessionId, jsonMessage);
+                                LOGGER.info("busInfo 전송 완료 to sessionId: {}", sessionId);
+                            });
+
+                    // 출발 지하철역 이름 추출
+                    Mono<List<String>> subwayStationNameList = getSubwayStationNameList(finalResult);
+                    subwayStationNameList.subscribe(names -> LOGGER.info("subway Station Name List : {}", names));
+                    // 지하철 도착 정보 호출
+                    Mono<List<SubwayResponse>> subwayArriveResponseList = callSubwayArrivalInfo(subwayStationNameList);
+                    subwayArriveResponseList.subscribe(arrives -> {
+                        LOGGER.info("subwayInfo 전송 준비");
+                        LOGGER.info("subway Info : {}", arrives);
+
+                        Map<String, Object> subwayInfoMessage = new HashMap<>();
+                        subwayInfoMessage.put("type", "subway");
+                        subwayInfoMessage.put("data", gson.toJson(arrives));
+
+
+                        String jsonMessage = gson.toJson(subwayInfoMessage);
+
+                        // WebSocket을 통해 직접 sessionId 기반으로 메시지 전송
+                        myWebSocketHandler.sendMessageToSession(sessionId, jsonMessage);
+                        LOGGER.info("SubwayInfo 전송 완료 to sessionId: {}", sessionId);
+                    });
+
+                    //지하철 상행 하행 여부 추출
+                    Mono<List<Integer>> wayCodeList = getWayCodeList(finalResult);
+                    wayCodeList.subscribe(wayCodes -> LOGGER.info("wayCode Result : {}", wayCodes));
+
+                    // 지하철 역 정보 추출
+                    Mono<List<SubwayInfo>> subwayStationInfo = getSubwayStationInfo(finalResult);
+                    subwayStationInfo.subscribe(info -> LOGGER.info("subway station info : {}", info));
+
+                    // 지하철 번호, 호선 추출
+                    Mono<List<Map<String, SubwayInfo>>> trainNumberList = getTrainNumberList(subwayArriveResponseList, subwayStationInfo);
+                    trainNumberList.subscribe(trainNo -> LOGGER.info("train Number Result : {}", trainNo));
+
+                    // 출발 지하철역 외부코드 추출
+                    Mono<List<String>> subwayStationFRCodeList = getSubwayStationFRCodeList(finalResult);
+                    subwayStationFRCodeList.subscribe(stationFRCodeResult -> LOGGER.info("subway FRCode Result : {}", stationFRCodeResult));
+
+                    // 지하철 코드 호출
+                    Mono<List<String>> subwayStationCodeList = callSubwayCodeInfo(subwayStationNameList, subwayStationFRCodeList);
+                    subwayStationCodeList.subscribe(subwayCodeInfo -> LOGGER.info("subway Code info : {}", subwayCodeInfo));
+
+                    // 지하철 출차역 입차역 리스트 호출
+                    Mono<List<Map<String, Pair<String, String>>>> subwayRoutes = callSubwayRoutes(subwayStationCodeList, wayCodeList);
+                    subwayRoutes.subscribe(routes -> LOGGER.info("subway routes : {}", routes));
+
+                    // 지하철 혼잡도 호출
+                    Mono<List<SubCongestionResponse>> subwayCongestionList = callSubwayCongestion(trainNumberList, subwayRoutes);
+                    subwayCongestionList.subscribe(congestion -> {
+                        LOGGER.info("subway Congestion info 전송 준비");
+                        LOGGER.info("subway Congestion info : {}", congestion);
+
+                        Map<String, Object> subwayCongestionMessage = new HashMap<>();
+                        subwayCongestionMessage.put("type", "subwayCongestion");
+                        subwayCongestionMessage.put("data", gson.toJson(congestion));
+
+
+                        String jsonMessage = gson.toJson(subwayCongestionMessage);
+
+                        // WebSocket을 통해 직접 sessionId 기반으로 메시지 전송
+                        myWebSocketHandler.sendMessageToSession(sessionId, jsonMessage);
+                        LOGGER.info("SubwayCongestionInfo 전송 완료 to sessionId: {}", sessionId);
+                    });
+                })
+                .doOnTerminate(() -> {
+                    long flowEndTime = System.currentTimeMillis();
+                    LOGGER.info("Total Flow Response Time : {}ms", flowEndTime - flowStartTime);
+                })
+                .block();
+    }
+
+    // 길찾기 결과 호출
+    public Mono<PathResult> getAllPathImproved(String sx, String sy, String ex, String ey) {
+        long startTime = System.currentTimeMillis();
+        String ODSAY_KEY = URLEncoder.encode(odsay_key, StandardCharsets.UTF_8);
+
+        Mono<PathResult> pathResultMono = apiWebClient
+                .get()
+                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                        .scheme("https")
+                        .host("api.odsay.com")
+                        .path("/v1/api/searchPubTransPathT")
+                        .queryParam("apiKey", ODSAY_KEY)
+                        .queryParam("SX", sx)
+                        .queryParam("SY", sy)
+                        .queryParam("EX", ex)
+                        .queryParam("EY", ey)
+                        .build(true)
+                        .toUri()
+                )
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .bodyToMono(PathResult.class);
+        long endTime = System.currentTimeMillis();
+
+        LOGGER.info("getAllPathTest response time : {}ms", (endTime - startTime));
+        return pathResultMono;
+    }
+
+    // 지하철 도착 및 혼잡도 정보 호출
+    private Mono<List<BusResponse>> callBusArrivalInfo(Mono<List<Integer>> startIDList, Mono<List<List<Integer>>> busIDList) {
+        return Mono.zip(startIDList, busIDList)
+                .flatMapMany(tuple -> {
+                    List<Integer> startIds = tuple.getT1();
+                    List<List<Integer>> busIds = tuple.getT2();
+
+                    List<Pair<Integer, List<Integer>>> pairedData = IntStream.range(0, startIds.size())
+                            .mapToObj(i -> Pair.of(startIds.get(i), busIds.get(i)))
+                            .distinct()
+                            .collect(Collectors.toList());
+
+                    return Flux.fromIterable(pairedData)
+                            .flatMap(pair -> getBusArrivalInfo(pair.getFirst(), pair.getSecond()));
+                })
+                .collectList();
+    }
+
+    // 버스 도착 정보 받음
+    private Mono<BusResponse> getBusArrivalInfo(int stationID, List<Integer> busIDList) {
+        String ODSAY_KEY = URLEncoder.encode(odsay_key, StandardCharsets.UTF_8);
+
+        String routeIDs = String.join(",", busIDList.stream()
+                .map(String::valueOf) // 숫자를 문자열로 변환
+                .toArray(String[]::new));
+
+        return apiWebClient
+                .get()
+                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                        .scheme("https")
+                        .host("api.odsay.com")
+                        .path("/v1/api/realtimeStation")
+                        .queryParam("apiKey", ODSAY_KEY)
+                        .queryParam("output", "json")
+                        .queryParam("stationID", stationID)
+                        .queryParam("routeIDs", routeIDs)
+                        .build(true)
+                        .toUri()
+                )
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .bodyToMono(BusResponse.class);
+    }
+
+    // 지하철 혼잡도 정보 얻기
+    private Mono<List<SubCongestionResponse>> callSubwayCongestion(Mono<List<Map<String, SubwayInfo>>> trainNumberList,
+                                                                   Mono<List<Map<String, Pair<String, String>>>> subwayRoutes) {
+        return trainNumberList
+                .flatMapMany(Flux::fromIterable)
+                .flatMap(map -> Flux.fromIterable(map.entrySet()))
+                .groupBy(entry -> Set.of("2", "3").contains(entry.getValue().getSubwayLine().substring(3, 4)))
+                .flatMap(groupedFlux -> {
+                    if (groupedFlux.key()) {
+                        // 실시간 혼잡도 조회
+                        return groupedFlux.flatMap(entry ->
+                                callSubwayRealTimeCongestion(entry.getValue().getSubwayLine().substring(3, 4), entry.getKey())
+                        );
+                    } else {
+                        // 통계 혼잡도 조회
+                        return subwayRoutes
+                                .flatMapMany(Flux::fromIterable)
+                                .flatMap(routeMapList -> Flux.fromIterable(routeMapList.entrySet()))
+                                .flatMap(routeEntry -> callSubwayStatisticsCongestion(routeEntry.getKey(), routeEntry.getValue()));
+                    }
+                })
+                .distinct()
+                .collectList();
+    }
+
+    // 지하철역 정보 추출
+    private Mono<List<SubwayInfo>> getSubwayStationInfo(PathResult result) {
+        return Mono.fromCallable(() -> result.getResult().getPath().stream()
+                .flatMap(path -> path.getSubPath().stream())
+                .filter(subPath -> subPath instanceof SubwaySubPath)
+                .map(subPath -> {
+                    SubwaySubPath subwaySubPath = (SubwaySubPath) subPath;
+                    SubwayInfo subwayInfo = new SubwayInfo();
+
+                    subwayInfo.setStationName(subwaySubPath.getStartName());
+                    subwayInfo.setFrCode(subwaySubPath.getStartID());
+                    subwayInfo.setSubwayLine(subwaySubPath.getLane().get(0).getCode());
+                    subwayInfo.setWayCode(subwaySubPath.getWayCode());
+                    subwayInfo.setWayCodeConvert(subwaySubPath.getWayCodeConvert());
+
+                    return subwayInfo;
+                })
+                .distinct()
+                .collect(Collectors.toList()));
+    }
+
+    // 지하철 실시간 혼잡도 정보 호출
+    private Mono<SubRealTimeCongestionResponse> callSubwayRealTimeCongestion(String line, String trainNumber) {
+        SubRealTimeCongestionResponse response = new SubRealTimeCongestionResponse();
+        response.setCode(0);
+        response.setMsg("Request Succeeded");
+
+        RtConData data = new RtConData();
+        data.setSubwayLine(line);
+        data.setTrainY(trainNumber);
+
+        CongestionResult congestion = new CongestionResult();
+        congestion.setCongestionType(1);
+        Random random = new Random();
+        congestion.setCongestionTrain(random.nextInt(100));
+        congestion.setCongestionCar("46|38|46|31|67|68|66|78|69|63");
+
+        data.setCongestionResult(congestion);
+        response.setData(data);
+        return Mono.just(response);
+
+//        return apiWebClient
+//                .get()
+//                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+//                        .scheme("https")
+//                        .host("apis.openapi.sk.com")
+//                        .path("/puzzle/subway/congestion/rltm/trains/" + line + "/" + trainNumber)
+//                        .build(true)
+//                        .toUri()
+//                )
+//                .accept(MediaType.APPLICATION_JSON)
+//                .header("appkey", sk_key)
+//                .retrieve()
+//                .bodyToMono(SubRealTimeCongestionResponse.class);
+    }
+
+    // 지하철 통계성 혼잡도 정보 호출
+    private Mono<SubStatisticsCongestionResponse> callSubwayStatisticsCongestion(String stationCode, Pair<String, String> subwayRoutes) {
+        LocalDateTime now = LocalDateTime.now();
+        String dow = now.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH).toUpperCase();
+        String hour = String.valueOf(now.getHour());
+
+
+        SubStatisticsCongestionResponse response = new SubStatisticsCongestionResponse();
+        Status status = new Status("00", "success", 1);
+        response.setStatus(status);
+
+        Contents contents = new Contents();
+        List<Stat> statList = new ArrayList<>();
+        List<ConData> dataList = new ArrayList<>() {{
+            Random random = new Random();
+            add(new ConData(dow, hour, "00", random.nextInt(100)));
+            add(new ConData(dow, hour, "10", random.nextInt(100)));
+            add(new ConData(dow, hour, "20", random.nextInt(100)));
+            add(new ConData(dow, hour, "30", random.nextInt(100)));
+            add(new ConData(dow, hour, "40", random.nextInt(100)));
+            add(new ConData(dow, hour, "50", random.nextInt(100)));
+        }};
+        Stat stat = new Stat(subwayRoutes.getFirst(), subwayRoutes.getSecond(), dataList);
+        statList.add(stat);
+
+        contents.setStationCode(stationCode);
+        contents.setStat(statList);
+
+        response.setContents(contents);
+        return Mono.just(response);
+
+//        return apiWebClient
+//                .get()
+//                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+//                        .scheme("https")
+//                        .host("apis.openapi.sk.com")
+//                        .path("/puzzle/subway/congestion/stat/train/stations/" + stationCode)
+//                        .build(true)
+//                        .toUri()
+//                )
+//                .accept(MediaType.APPLICATION_JSON)
+//                .header("appkey", sk_key)
+//                .retrieve()
+//                .bodyToMono(SubStatisticsCongestionResponse.class)
+//                .map(response -> {
+//                    // 기존 데이터 유지하기 위해 새로운 Response 객체 생성
+//                    SubStatisticsCongestionResponse filteredResponse = new SubStatisticsCongestionResponse();
+//                    filteredResponse.setStatus(response.getStatus());
+//
+//                    Contents filteredContents = new Contents();
+//                    List<Stat> filteredStats = response.getContents().getStat().stream()
+//                            .filter(stat -> subwayRoutes.getFirst().equals(stat.getStartStationName()) &&
+//                                    subwayRoutes.getSecond().equals(stat.getEndStationName()))
+//                            .collect(Collectors.toList());
+//
+//                    filteredContents.setStat(filteredStats);
+//                    filteredResponse.setContents(filteredContents);
+//
+//                    return filteredResponse;
+//                });
+    }
+
+
+    // 지하철 도착 정보 호출
+    private Mono<List<SubwayResponse>> callSubwayArrivalInfo(Mono<List<String>> subwayStationNames) {
+        return subwayStationNames.flatMapMany(Flux::fromIterable)
+                .distinct()
+                .flatMap(stationName -> {
+                    try {
+                        String processedStationName = processStationName(stationName); // 역 이름 처리
+                        String encodedName = URLEncoder.encode(processedStationName, StandardCharsets.UTF_8); // 인코딩 처리
+
+                        // API 호출
+                        return apiWebClient
+                                .get()
+                                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                                        .scheme("http")
+                                        .host("swopenAPI.seoul.go.kr")
+                                        .path("/api/subway/" + subw_key + "/json/realtimeStationArrival/0/20/" + encodedName)
+                                        .build(true)
+                                        .toUri()
+                                )
+                                .accept(MediaType.APPLICATION_JSON)
+                                .retrieve()
+                                .bodyToMono(SubwayResponse.class);
+                    } catch (Exception e) {
+                        return Mono.error(new RuntimeException("Error processing station name: " + stationName, e));
+                    }
+                })
+                .collectList();
+    }
+
+    // 지하철 코드 추출
+    private Mono<List<String>> callSubwayCodeInfo(Mono<List<String>> stationNames, Mono<List<String>> frCodes) {
+        return stationNames.flatMapMany(Flux::fromIterable)
+                .distinct()
+                .flatMap(stationName -> {
+                    try {
+                        String processedStationName = processStationName(stationName); // 역 이름 처리
+                        String encodedName = URLEncoder.encode(processedStationName, StandardCharsets.UTF_8);
+
+                        // API 호출
+                        return apiWebClient
+                                .get()
+                                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                                        .scheme("http")
+                                        .host("openAPI.seoul.go.kr")
+                                        .port("8088")
+                                        .path(subw_key + "/json/SearchInfoBySubwayNameService/1/10/" + encodedName)
+                                        .build(true)
+                                        .toUri()
+                                )
+                                .accept(MediaType.APPLICATION_JSON)
+                                .retrieve()
+                                .bodyToMono(SubwayCodeResponse.class);
+                    } catch (Exception e) {
+                        return Mono.error(new RuntimeException("Error processing station name: " + stationName, e));
+                    }
+                })
+                .collectList()
+                .zipWith(frCodes)
+                .flatMapMany(tuple -> {
+                    List<SubwayCodeResponse> subwayResponses = tuple.getT1();
+                    List<String> stationCodes = tuple.getT2();
+
+                    // FR_CODE가 subwayStationCodeList에 포함된 SubwayCodeResponse의 STATION_CD 추출
+                    return Flux.fromIterable(subwayResponses)
+                            .flatMap(response -> {
+                                if (response.getSearchInfoBySubwayNameService() != null) {
+                                    return Flux.fromIterable(response.getSearchInfoBySubwayNameService().getRow())
+                                            .filter(row -> stationCodes.contains(row.getFR_CODE())) // FR_CODE 비교
+                                            .map(SubwayCodeRow::getSTATION_CD); // STATION_CD 추출
+                                } else {
+                                    return Flux.empty();
+                                }
+                            });
+                })
+                .collectList();
+    }
+
+    // 지하철 열차 번호 추출
+    private Mono<List<Map<String, SubwayInfo>>> getTrainNumberList(Mono<List<SubwayResponse>> subwayResponseList,
+                                                                   Mono<List<SubwayInfo>> subwayDataList) {
+        return Mono.zip(subwayResponseList, subwayDataList)
+                .flatMapMany(tuple -> {
+                    List<SubwayResponse> responses = tuple.getT1();
+                    List<SubwayInfo> stationInfo = tuple.getT2();
+
+                    return Flux.fromIterable(responses)
+                            .flatMap(response -> {
+                                List<RealtimeArrival> arrivalList = response.getRealtimeArrivalList();
+                                if (arrivalList == null || arrivalList.isEmpty()) {
+                                    return Flux.empty();
+                                }
+
+                                return Flux.fromIterable(arrivalList)
+                                        .flatMap(arrival -> {
+                                            for (SubwayInfo info : stationInfo) {
+                                                if (info.getWayCode() == -1 || info.getSubwayLine() == null || info.getStationName() == null) {
+                                                    continue;
+                                                }
+                                                boolean isWayCodeMatched = info.getWayCodeConvert() == Integer.parseInt(arrival.getOrdkey().substring(0, 1));
+                                                boolean isLineCodeMatched = info.getSubwayLine().contains(arrival.getSubwayId());
+                                                boolean isStationNameMatched = info.getStationName().equals(arrival.getStatnNm());
+                                                boolean isFirstTrain = Integer.parseInt(arrival.getOrdkey().substring(1, 2)) == 1;
+
+                                                if (isWayCodeMatched && isLineCodeMatched && isStationNameMatched && isFirstTrain) {
+                                                    return Mono.just(Pair.of(arrival.getBtrainNo(), info));
+                                                }
+                                            }
+                                            return Mono.empty();
+                                        });
+                            })
+                            .distinct(Pair::getFirst) // btrainNo를 기준으로 중복 제거
+                            .collectMap(Pair::getFirst, Pair::getSecond); // Key: btrainNo, Value: SubwayData
+                })
+                .collectList();
+    }
+
+    // 지하철 노선 정보(출발역, 종착역) 호출
+    private Mono<List<Map<String, Pair<String, String>>>> callSubwayRoutes(Mono<List<String>> subwayStationCodeList, Mono<List<Integer>> wayCodeList) {
+        return Mono.zip(subwayStationCodeList, wayCodeList)
+                .flatMapMany(tuple -> {
+                    List<String> stationCodes = tuple.getT1();
+                    List<Integer> wayCodes = tuple.getT2();
+
+                    List<Pair<String, Integer>> pairedData = IntStream.range(0, stationCodes.size())
+                            .mapToObj(i -> Pair.of(stationCodes.get(i), wayCodes.get(i)))
+                            .distinct()
+                            .collect(Collectors.toList());
+
+                    return Flux.fromIterable(pairedData)
+                            .flatMap(pair -> getSubwayRoutes(pair.getFirst(), pair.getSecond()));
+                })
+                .collectList();
+    }
+
+    // 지하철 노선 정보(출발역, 종착역) 얻기
+    private Mono<Map<String, Pair<String, String>>> getSubwayRoutes(String stationCode, Integer updnLine) {
+        LocalDate today = LocalDate.now();
+        DayOfWeek day = today.getDayOfWeek();
+        String weekTag = dayMap.get(day.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).toUpperCase());
+
+        LocalTime now = LocalTime.now();
+
+        return apiWebClient
+                .get()
+                .uri(uriBuilder -> UriComponentsBuilder.newInstance()
+                        .scheme("http")
+                        .host("openAPI.seoul.go.kr")
+                        .port("8088")
+                        .path(subw_key + "/json/SearchSTNTimeTableByIDService/1/500/" + stationCode + "/" + weekTag + "/" + updnLine)
+                        .build(true)
+                        .toUri()
+                )
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .bodyToMono(SubwayTimeTableResponse.class)
+                .flatMap(response -> {
+                    Optional<TimeTableRow> closestRow = response.getSearchSTNTimeTableByIDService().getRow().stream()
+                            .filter(row -> {
+                                LocalTime arrivalTime = parseTime(row.getARRIVETIME());
+                                return arrivalTime.isAfter(now);
+                            })
+                            .min(Comparator.comparing(row -> parseTime(row.getARRIVETIME())));
+                    // 가장 가까운 도착 시간이 있으면 처리
+                    if (closestRow.isPresent()) {
+                        TimeTableRow row = closestRow.get();
+                        LOGGER.info("조회 지하철역: {}", row.getSTATION_NM());
+                        LOGGER.info("가장 가까운 도착 시간: {}", row.getARRIVETIME());
+                        return Mono.just(Map.of(row.getFR_CODE(), Pair.of(row.getSUBWAYSNAME(), row.getSUBWAYENAME())));
+                    } else {
+                        LOGGER.info("현재 시간보다 이전 도착 시간 데이터가 없습니다.");
+                        return Mono.empty();
+                    }
+                })
+                .doOnNext(response -> LOGGER.info("Subway Routes Response : {}", response));
+    }
+
+    // 시간 변환
+    private LocalTime parseTime(String timeString) {
+        if (timeString.startsWith("24:")) {
+            return LocalTime.parse("00:" + timeString.substring(3)); // 24를 00으로 변환
+        } else if (timeString.startsWith("25:")) {
+            return LocalTime.parse("01:" + timeString.substring(3)); // 25를 01로 변환
+        }
+        return LocalTime.parse(timeString);
+    }
+
+    // 지하철역명 변환
+    private String processStationName(String stationName) {
+        // "역" 제거
+        if (stationName.endsWith("역")) {
+            stationName = stationName.substring(0, stationName.length() - 1);
+        }
+        // 맵을 이용해 역 이름 변경
+        if (stationMap.containsKey(stationName)) {
+            stationName = stationMap.get(stationName);
+        }
+        return stationName;
+    }
+
+    // 상행 하행 여부 리스트 추출
+    private Mono<List<Integer>> getWayCodeList(PathResult result) {
+        return Mono.fromCallable(() -> result.getResult().getPath().stream()
+                .flatMap(path -> path.getSubPath().stream())
+                .filter(subPath -> subPath instanceof SubwaySubPath)
+                .map(subPath -> ((SubwaySubPath) subPath).getWayCode())
+                .collect(Collectors.toList()));
+    }
+
+    // 지하철역 이름 리스트 추출
+    private Mono<List<String>> getSubwayStationNameList(PathResult result) {
+        return Mono.fromCallable(() -> result.getResult().getPath().stream()
+                .flatMap(path -> path.getSubPath().stream())
+                .filter(subPath -> subPath instanceof SubwaySubPath)
+                .map(subPath -> ((SubwaySubPath) subPath).getStartName())
+                .collect(Collectors.toList()));
+    }
+
+    // 지하철역 외부코드 리스트 추출
+    private Mono<List<String>> getSubwayStationFRCodeList(PathResult result) {
+        return Mono.fromCallable(() -> result.getResult().getPath().stream()
+                .flatMap(path -> path.getSubPath().stream())
+                .filter(subPath -> subPath instanceof SubwaySubPath)
+                .map(subPath -> ((SubwaySubPath) subPath).getStartID())
+                .collect(Collectors.toList()));
+    }
+
+    // 버스ID 리스트 추출
+    private Mono<List<List<Integer>>> getBusIDList(PathResult result) {
+        return Mono.fromCallable(() -> result.getResult().getPath().stream()
+                .flatMap(path -> path.getSubPath().stream())
+                .filter(subPath -> subPath instanceof BusSubPath)
+                .map(subPath -> ((BusSubPath) subPath).getLane().stream()
+                        .map(BusLane::getBusID)
+                        .collect(Collectors.toList()))
+                .collect(Collectors.toList()));
+    }
+
+    // 출발 정류장 ID 리스트 추출
+    private Mono<List<Integer>> getStartID(PathResult result) {
+        return Mono.fromCallable(() -> result.getResult().getPath().stream()
+                .flatMap(path -> path.getSubPath().stream())
+                .filter(subPath -> subPath instanceof BusSubPath)
+                .map(subPath -> ((BusSubPath) subPath).getStartID())
+                .collect(Collectors.toList()));
+    }
+
+    // -----------------------------------------------------------------------------------------------------------------
     // 혼잡도와 도착정보가 포함된 경로 데이터를 만듦
     @Override
     public String getPathWithCongestion(String sx, String sy, String ex, String ey) {
-        String str = "[ {\n" +
-                "    \"pathType\" : \"지하철\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 9500.0,\n" +
-                "      \"totalDistance\" : 9849.0,\n" +
-                "      \"totalTime\" : 22,\n" +
-                "      \"firstStartStation\" : \"잠실\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"51.0\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 304,\n" +
-                "      \"sectionTime\" : 5\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"지하철\",\n" +
-                "      \"distance\" : 7900,\n" +
-                "      \"sectionTime\" : 13,\n" +
-                "      \"stationCount\" : 7,\n" +
-                "      \"startName\" : \"잠실\",\n" +
-                "      \"endName\" : \"교대\",\n" +
-                "      \"startExitNo\" : \"4\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"name\" : \"2호선\"\n" +
-                "      } ],\n" +
-                "      \"arrive\" : [ {\n" +
-                "        \"btrainNo\" : \"3270\",\n" +
-                "        \"arvlMsg1\" : \"전역 도착\",\n" +
-                "        \"arvlMsg2\" : \"\",\n" +
-                "        \"arvlCode\" : \"전역 도착\",\n" +
-                "        \"remainSt\" : \"1\",\n" +
-                "        \"lastStName\" : \"성수\"\n" +
-                "      } ],\n" +
-                "      \"congestion\" : [ {\n" +
-                "        \"congestionTrain\" : \"44\"\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 0,\n" +
-                "      \"sectionTime\" : 0\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"지하철\",\n" +
-                "      \"distance\" : 1600,\n" +
-                "      \"sectionTime\" : 3,\n" +
-                "      \"stationCount\" : 1,\n" +
-                "      \"startName\" : \"교대\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"endExitNo\" : \"7\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"name\" : \"3호선\"\n" +
-                "      } ],\n" +
-                "      \"arrive\" : [ {\n" +
-                "        \"btrainNo\" : \"3238\",\n" +
-                "        \"arvlMsg1\" : \"3분 58초 후 (양재)\",\n" +
-                "        \"arvlMsg2\" : \"\",\n" +
-                "        \"arvlCode\" : \"운행 중\",\n" +
-                "        \"remainSt\" : \"2\",\n" +
-                "        \"lastStName\" : \"대화\"\n" +
-                "      } ],\n" +
-                "      \"congestion\" : [ {\n" +
-                "        \"congestionTrain\" : \"58\"\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 45,\n" +
-                "      \"sectionTime\" : 1\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"지하철\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 8900.0,\n" +
-                "      \"totalDistance\" : 9382.0,\n" +
-                "      \"totalTime\" : 28,\n" +
-                "      \"firstStartStation\" : \"잠실\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"44.0\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 304,\n" +
-                "      \"sectionTime\" : 5\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"지하철\",\n" +
-                "      \"distance\" : 2400,\n" +
-                "      \"sectionTime\" : 4,\n" +
-                "      \"stationCount\" : 2,\n" +
-                "      \"startName\" : \"잠실\",\n" +
-                "      \"endName\" : \"종합운동장\",\n" +
-                "      \"startExitNo\" : \"4\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"name\" : \"2호선\"\n" +
-                "      } ],\n" +
-                "      \"arrive\" : [ {\n" +
-                "        \"btrainNo\" : \"3270\",\n" +
-                "        \"arvlMsg1\" : \"전역 도착\",\n" +
-                "        \"arvlMsg2\" : \"\",\n" +
-                "        \"arvlCode\" : \"전역 도착\",\n" +
-                "        \"remainSt\" : \"1\",\n" +
-                "        \"lastStName\" : \"성수\"\n" +
-                "      } ],\n" +
-                "      \"congestion\" : [ {\n" +
-                "        \"congestionTrain\" : \"44\"\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 0,\n" +
-                "      \"sectionTime\" : 0\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"지하철\",\n" +
-                "      \"distance\" : 6500,\n" +
-                "      \"sectionTime\" : 16,\n" +
-                "      \"stationCount\" : 4,\n" +
-                "      \"startName\" : \"종합운동장\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"endExitNo\" : \"7\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"name\" : \"9호선(급행)\"\n" +
-                "      } ],\n" +
-                "      \"arrive\" : [ {\n" +
-                "        \"btrainNo\" : \"9608\",\n" +
-                "        \"arvlMsg1\" : \"전역 도착\",\n" +
-                "        \"arvlMsg2\" : \"\",\n" +
-                "        \"arvlCode\" : \"전역 도착\",\n" +
-                "        \"remainSt\" : \"1\",\n" +
-                "        \"lastStName\" : \"중앙보훈병원\"\n" +
-                "      } ],\n" +
-                "      \"congestion\" : [ {\n" +
-                "        \"congestionTrain\" : \"no info\"\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 178,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"혼합\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 9338.0,\n" +
-                "      \"totalDistance\" : 9938.0,\n" +
-                "      \"totalTime\" : 32,\n" +
-                "      \"firstStartStation\" : \"잠실\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"34.5\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 304,\n" +
-                "      \"sectionTime\" : 5\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"지하철\",\n" +
-                "      \"distance\" : 6700,\n" +
-                "      \"sectionTime\" : 11,\n" +
-                "      \"stationCount\" : 6,\n" +
-                "      \"startName\" : \"잠실\",\n" +
-                "      \"endName\" : \"강남\",\n" +
-                "      \"startExitNo\" : \"4\",\n" +
-                "      \"endExitNo\" : \"9\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"name\" : \"2호선\"\n" +
-                "      } ],\n" +
-                "      \"arrive\" : [ {\n" +
-                "        \"btrainNo\" : \"3270\",\n" +
-                "        \"arvlMsg1\" : \"전역 도착\",\n" +
-                "        \"arvlMsg2\" : \"\",\n" +
-                "        \"arvlCode\" : \"전역 도착\",\n" +
-                "        \"remainSt\" : \"1\",\n" +
-                "        \"lastStName\" : \"성수\"\n" +
-                "      } ],\n" +
-                "      \"congestion\" : [ {\n" +
-                "        \"congestionTrain\" : \"44\"\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 95,\n" +
-                "      \"sectionTime\" : 1\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 2638,\n" +
-                "      \"sectionTime\" : 12,\n" +
-                "      \"stationCount\" : 5,\n" +
-                "      \"startName\" : \"강남역.강남역사거리\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"640\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"4분 18초 후 [1번째 전]\",\n" +
-                "        \"arrMsg2\" : \"20분 15초 후 [5번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 201,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"버스\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 9507.0,\n" +
-                "      \"totalDistance\" : 9908.0,\n" +
-                "      \"totalTime\" : 39,\n" +
-                "      \"firstStartStation\" : \"잠실역.롯데월드\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"25.0\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 200,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 9507,\n" +
-                "      \"sectionTime\" : 33,\n" +
-                "      \"stationCount\" : 18,\n" +
-                "      \"startName\" : \"잠실역.롯데월드\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"360\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"9분 53초 후 [3번째 전]\",\n" +
-                "        \"arrMsg2\" : \"13분 41초 후 [5번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 201,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"버스\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 9537.0,\n" +
-                "      \"totalDistance\" : 9892.0,\n" +
-                "      \"totalTime\" : 39,\n" +
-                "      \"firstStartStation\" : \"잠실역.롯데월드\",\n" +
-                "      \"lastEndStation\" : \"센트럴시티\",\n" +
-                "      \"averageCongestion\" : \"25.0\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 200,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 9537,\n" +
-                "      \"sectionTime\" : 34,\n" +
-                "      \"stationCount\" : 20,\n" +
-                "      \"startName\" : \"잠실역.롯데월드\",\n" +
-                "      \"endName\" : \"센트럴시티\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"3414\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"4분 8초 후 [1번째 전]\",\n" +
-                "        \"arrMsg2\" : \"15분 1초 후 [7번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 155,\n" +
-                "      \"sectionTime\" : 2\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"혼합\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 10193.0,\n" +
-                "      \"totalDistance\" : 10827.0,\n" +
-                "      \"totalTime\" : 34,\n" +
-                "      \"firstStartStation\" : \"잠실\",\n" +
-                "      \"lastEndStation\" : \"고속터미널호남선\",\n" +
-                "      \"averageCongestion\" : \"34.5\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 304,\n" +
-                "      \"sectionTime\" : 5\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"지하철\",\n" +
-                "      \"distance\" : 8600,\n" +
-                "      \"sectionTime\" : 15,\n" +
-                "      \"stationCount\" : 8,\n" +
-                "      \"startName\" : \"잠실\",\n" +
-                "      \"endName\" : \"서초\",\n" +
-                "      \"startExitNo\" : \"4\",\n" +
-                "      \"endExitNo\" : \"7\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"name\" : \"2호선\"\n" +
-                "      } ],\n" +
-                "      \"arrive\" : [ {\n" +
-                "        \"btrainNo\" : \"3270\",\n" +
-                "        \"arvlMsg1\" : \"전역 도착\",\n" +
-                "        \"arvlMsg2\" : \"\",\n" +
-                "        \"arvlCode\" : \"전역 도착\",\n" +
-                "        \"remainSt\" : \"1\",\n" +
-                "        \"lastStName\" : \"성수\"\n" +
-                "      } ],\n" +
-                "      \"congestion\" : [ {\n" +
-                "        \"congestionTrain\" : \"44\"\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 143,\n" +
-                "      \"sectionTime\" : 2\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 1593,\n" +
-                "      \"sectionTime\" : 9,\n" +
-                "      \"stationCount\" : 3,\n" +
-                "      \"startName\" : \"서초역.서울중앙지법등기국\",\n" +
-                "      \"endName\" : \"고속터미널호남선\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"5413\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"4분 39초 후 [1번째 전]\",\n" +
-                "        \"arrMsg2\" : \"9분 43초 후 [4번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 187,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"혼합\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 9097.0,\n" +
-                "      \"totalDistance\" : 9948.0,\n" +
-                "      \"totalTime\" : 35,\n" +
-                "      \"firstStartStation\" : \"잠실\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"34.5\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 304,\n" +
-                "      \"sectionTime\" : 5\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"지하철\",\n" +
-                "      \"distance\" : 6700,\n" +
-                "      \"sectionTime\" : 11,\n" +
-                "      \"stationCount\" : 6,\n" +
-                "      \"startName\" : \"잠실\",\n" +
-                "      \"endName\" : \"강남\",\n" +
-                "      \"startExitNo\" : \"4\",\n" +
-                "      \"endExitNo\" : \"10\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"name\" : \"2호선\"\n" +
-                "      } ],\n" +
-                "      \"arrive\" : [ {\n" +
-                "        \"btrainNo\" : \"3270\",\n" +
-                "        \"arvlMsg1\" : \"전역 도착\",\n" +
-                "        \"arvlMsg2\" : \"\",\n" +
-                "        \"arvlCode\" : \"전역 도착\",\n" +
-                "        \"remainSt\" : \"1\",\n" +
-                "        \"lastStName\" : \"성수\"\n" +
-                "      } ],\n" +
-                "      \"congestion\" : [ {\n" +
-                "        \"congestionTrain\" : \"44\"\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 346,\n" +
-                "      \"sectionTime\" : 5\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 2397,\n" +
-                "      \"sectionTime\" : 11,\n" +
-                "      \"stationCount\" : 4,\n" +
-                "      \"startName\" : \"지하철2호선강남역\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"643\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"4분 23초 후 [1번째 전]\",\n" +
-                "        \"arrMsg2\" : \"11분 18초 후 [4번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 201,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"혼합\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 9266.0,\n" +
-                "      \"totalDistance\" : 9803.0,\n" +
-                "      \"totalTime\" : 35,\n" +
-                "      \"firstStartStation\" : \"잠실역.롯데월드\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"34.5\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 201,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 4466,\n" +
-                "      \"sectionTime\" : 18,\n" +
-                "      \"stationCount\" : 9,\n" +
-                "      \"startName\" : \"잠실역.롯데월드\",\n" +
-                "      \"endName\" : \"청담역.경기고교\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"301\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"곧 도착\",\n" +
-                "        \"arrMsg2\" : \"12분 36초 후 [6번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 215,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"지하철\",\n" +
-                "      \"distance\" : 4800,\n" +
-                "      \"sectionTime\" : 9,\n" +
-                "      \"stationCount\" : 5,\n" +
-                "      \"startName\" : \"청담\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"startExitNo\" : \"13\",\n" +
-                "      \"endExitNo\" : \"7\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"name\" : \"7호선\"\n" +
-                "      } ],\n" +
-                "      \"arrive\" : [ {\n" +
-                "        \"btrainNo\" : \"7235\",\n" +
-                "        \"arvlMsg1\" : \"전역 출발\",\n" +
-                "        \"arvlMsg2\" : \"\",\n" +
-                "        \"arvlCode\" : \"전역 출발\",\n" +
-                "        \"remainSt\" : \"1\",\n" +
-                "        \"lastStName\" : \"석남\"\n" +
-                "      } ],\n" +
-                "      \"congestion\" : [ {\n" +
-                "        \"congestionTrain\" : \"44\"\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 121,\n" +
-                "      \"sectionTime\" : 2\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"혼합\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 9431.0,\n" +
-                "      \"totalDistance\" : 9971.0,\n" +
-                "      \"totalTime\" : 36,\n" +
-                "      \"firstStartStation\" : \"잠실역.롯데월드\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"25.0\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 201,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 1531,\n" +
-                "      \"sectionTime\" : 10,\n" +
-                "      \"stationCount\" : 4,\n" +
-                "      \"startName\" : \"잠실역.롯데월드\",\n" +
-                "      \"endName\" : \"삼전역\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"3315\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"3분 55초 후 [1번째 전]\",\n" +
-                "        \"arrMsg2\" : \"12분 23초 후 [5번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 161,\n" +
-                "      \"sectionTime\" : 2\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"지하철\",\n" +
-                "      \"distance\" : 7900,\n" +
-                "      \"sectionTime\" : 18,\n" +
-                "      \"stationCount\" : 8,\n" +
-                "      \"startName\" : \"삼전\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"startExitNo\" : \"3\",\n" +
-                "      \"endExitNo\" : \"7\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"name\" : \"9호선\"\n" +
-                "      } ],\n" +
-                "      \"arrive\" : [ {\n" +
-                "        \"btrainNo\" : \"9114\",\n" +
-                "        \"arvlMsg1\" : \"전역 출발\",\n" +
-                "        \"arvlMsg2\" : \"\",\n" +
-                "        \"arvlCode\" : \"전역 출발\",\n" +
-                "        \"remainSt\" : \"1\",\n" +
-                "        \"lastStName\" : \"중앙보훈병원\"\n" +
-                "      } ],\n" +
-                "      \"congestion\" : [ {\n" +
-                "        \"congestionTrain\" : \"no info\"\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 178,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"버스\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 11063.0,\n" +
-                "      \"totalDistance\" : 11464.0,\n" +
-                "      \"totalTime\" : 44,\n" +
-                "      \"firstStartStation\" : \"잠실역.롯데월드\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"25.0\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 200,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 11063,\n" +
-                "      \"sectionTime\" : 38,\n" +
-                "      \"stationCount\" : 22,\n" +
-                "      \"startName\" : \"잠실역.롯데월드\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"345\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"9분 54초 후 [3번째 전]\",\n" +
-                "        \"arrMsg2\" : \"26분 6초 후 [10번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 201,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"버스\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 13090.0,\n" +
-                "      \"totalDistance\" : 13491.0,\n" +
-                "      \"totalTime\" : 50,\n" +
-                "      \"firstStartStation\" : \"잠실역.롯데월드\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"25.0\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 200,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 13090,\n" +
-                "      \"sectionTime\" : 44,\n" +
-                "      \"stationCount\" : 27,\n" +
-                "      \"startName\" : \"잠실역.롯데월드\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"4318\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"5분 4초 후 [1번째 전]\",\n" +
-                "        \"arrMsg2\" : \"12분 13초 후 [5번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 201,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"버스\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 9238.0,\n" +
-                "      \"totalDistance\" : 9639.0,\n" +
-                "      \"totalTime\" : 43,\n" +
-                "      \"firstStartStation\" : \"잠실역.롯데월드\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"25.0\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 200,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 5280,\n" +
-                "      \"sectionTime\" : 21,\n" +
-                "      \"stationCount\" : 11,\n" +
-                "      \"startName\" : \"잠실역.롯데월드\",\n" +
-                "      \"endName\" : \"강남구청.강남세무서\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"301\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"곧 도착\",\n" +
-                "        \"arrMsg2\" : \"12분 19초 후 [5번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 0,\n" +
-                "      \"sectionTime\" : 0\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 3958,\n" +
-                "      \"sectionTime\" : 16,\n" +
-                "      \"stationCount\" : 8,\n" +
-                "      \"startName\" : \"강남구청.강남세무서\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"401\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"7분 24초 후 [3번째 전]\",\n" +
-                "        \"arrMsg2\" : \"12분 25초 후 [5번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 201,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"버스\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 11416.0,\n" +
-                "      \"totalDistance\" : 11817.0,\n" +
-                "      \"totalTime\" : 49,\n" +
-                "      \"firstStartStation\" : \"잠실역.롯데월드\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"25.0\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 200,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 3194,\n" +
-                "      \"sectionTime\" : 14,\n" +
-                "      \"stationCount\" : 7,\n" +
-                "      \"startName\" : \"잠실역.롯데월드\",\n" +
-                "      \"endName\" : \"삼성역7번출구\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"301\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"곧 도착\",\n" +
-                "        \"arrMsg2\" : \"12분 19초 후 [5번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 0,\n" +
-                "      \"sectionTime\" : 0\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 8222,\n" +
-                "      \"sectionTime\" : 29,\n" +
-                "      \"stationCount\" : 17,\n" +
-                "      \"startName\" : \"삼성역7번출구\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"143\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"11분 26초 후 [5번째 전]\",\n" +
-                "        \"arrMsg2\" : \"17분 48초 후 [9번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 201,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"버스\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 8920.0,\n" +
-                "      \"totalDistance\" : 9515.0,\n" +
-                "      \"totalTime\" : 49,\n" +
-                "      \"firstStartStation\" : \"잠실5단지\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"25.0\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 394,\n" +
-                "      \"sectionTime\" : 6\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 2876,\n" +
-                "      \"sectionTime\" : 13,\n" +
-                "      \"stationCount\" : 6,\n" +
-                "      \"startName\" : \"잠실5단지\",\n" +
-                "      \"endName\" : \"삼성역7번출구\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"301\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"2분 25초 후 [1번째 전]\",\n" +
-                "        \"arrMsg2\" : \"13분 25초 후 [6번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 0,\n" +
-                "      \"sectionTime\" : 0\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 1655,\n" +
-                "      \"sectionTime\" : 9,\n" +
-                "      \"stationCount\" : 3,\n" +
-                "      \"startName\" : \"삼성역7번출구\",\n" +
-                "      \"endName\" : \"진흥아파트\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"343\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"5분 3초 후 [3번째 전]\",\n" +
-                "        \"arrMsg2\" : \"14분 24초 후 [7번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 0,\n" +
-                "      \"sectionTime\" : 0\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 4389,\n" +
-                "      \"sectionTime\" : 18,\n" +
-                "      \"stationCount\" : 9,\n" +
-                "      \"startName\" : \"진흥아파트\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"401\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"4분 57초 후 [2번째 전]\",\n" +
-                "        \"arrMsg2\" : \"9분 58초 후 [4번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 201,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  }, {\n" +
-                "    \"pathType\" : \"버스\",\n" +
-                "    \"info\" : {\n" +
-                "      \"trafficDistance\" : 9037.0,\n" +
-                "      \"totalDistance\" : 9632.0,\n" +
-                "      \"totalTime\" : 49,\n" +
-                "      \"firstStartStation\" : \"잠실5단지\",\n" +
-                "      \"lastEndStation\" : \"고속터미널\",\n" +
-                "      \"averageCongestion\" : \"25.0\"\n" +
-                "    },\n" +
-                "    \"subPath\" : [ {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 394,\n" +
-                "      \"sectionTime\" : 6\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 3457,\n" +
-                "      \"sectionTime\" : 15,\n" +
-                "      \"stationCount\" : 7,\n" +
-                "      \"startName\" : \"잠실5단지\",\n" +
-                "      \"endName\" : \"포스코사거리\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"3411\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"7분 3초 후 [3번째 전]\",\n" +
-                "        \"arrMsg2\" : \"20분 3초 후 [10번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 0,\n" +
-                "      \"sectionTime\" : 0\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 1622,\n" +
-                "      \"sectionTime\" : 9,\n" +
-                "      \"stationCount\" : 3,\n" +
-                "      \"startName\" : \"포스코사거리\",\n" +
-                "      \"endName\" : \"강남구청.강남세무서\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"3011\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"곧 도착\",\n" +
-                "        \"arrMsg2\" : \"9분 36초 후 [5번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 0,\n" +
-                "      \"sectionTime\" : 0\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"버스\",\n" +
-                "      \"distance\" : 3958,\n" +
-                "      \"sectionTime\" : 16,\n" +
-                "      \"stationCount\" : 8,\n" +
-                "      \"startName\" : \"강남구청.강남세무서\",\n" +
-                "      \"endName\" : \"고속터미널\",\n" +
-                "      \"lane\" : [ {\n" +
-                "        \"busNo\" : \"401\"\n" +
-                "      } ],\n" +
-                "      \"arriveCongestion\" : [ {\n" +
-                "        \"arrMsg1\" : \"7분 24초 후 [3번째 전]\",\n" +
-                "        \"arrMsg2\" : \"12분 25초 후 [5번째 전]\",\n" +
-                "        \"busCongestion1\" : 25,\n" +
-                "        \"busCongestion2\" : 25\n" +
-                "      } ]\n" +
-                "    }, {\n" +
-                "      \"trafficType\" : \"도보\",\n" +
-                "      \"distance\" : 201,\n" +
-                "      \"sectionTime\" : 3\n" +
-                "    } ]\n" +
-                "  } ]";
+        LOGGER.info(sx);
+        LOGGER.info(sy);
+        LOGGER.info(ex);
+        LOGGER.info(ey);
 
-        return str;
-
-        /*subPathObject = new ArrayList<>();
+        subPathObject = new ArrayList<>();
         infoObject = new ArrayList<>();
 
         LocalTime currentTime = LocalTime.now();
@@ -1003,7 +753,7 @@ public class TransServiceImpl implements TransService {
         LOGGER.info("[time]: " + hour + ":" + minute);
 
         // 출발지부터 목적지까지의 경로 중 필요한 데이터만 추출
-        List<List<TransInfoDTO>> info = getAllPath(sx, sy, ex, ey);
+        List<List<TransInfoDTO>> info = getAllPath(sx, sy, ex, ey); // API 호출 1
 
         // seq 번째 JsonNode에 데이터를 추가하기 위한 변수
         int transIndex = 0;
@@ -1031,7 +781,7 @@ public class TransServiceImpl implements TransService {
                     // 버스 도착 정보, 혼잡도 처리
                     for (int i = 0; i < busLocalBlIDList.size(); i++) {
                         // 버스 정류장 순번 정보 추출
-                        String stationSeq = getBusStationSequence(startID, busIDList.get(i));
+                        String stationSeq = getBusStationSequence(startID, busIDList.get(i)); // API 호출 2
                         // 버스 순번 정보가 없다면 도착 및 혼잡도 정보 추가 불가능, no info 출력하고 다시 for문 실행
                         if (stationSeq == null) {
                             noInfoBus(busArrCon);
@@ -1039,7 +789,7 @@ public class TransServiceImpl implements TransService {
                         }
                         String busLocalBlID = busLocalBlIDList.get(i);
                         int busCongestion = addBusArriveAndCongestion(busArrCon, startLocalStationID,
-                                busLocalBlID, stationSeq);
+                                busLocalBlID, stationSeq); // API 호출 3
                         // 버스 혼잡도 정보가 없다면 다시 for문 실행
                         if (busCongestion == -1 || busCongestion == 0) {
                             continue;
@@ -1090,7 +840,7 @@ public class TransServiceImpl implements TransService {
                         int intLine;
                         // 도착 정보를 출력할 수 없는 호선은 거름(도착 정보를 출력할 수 없으면 혼잡도 정보도 제공할 수 없음)
                         if (lineNumber != null) {
-                            btrainDTO = addSubwayArrive(subArrive, startName, lineNumber, wayCodeConvert);
+                            btrainDTO = addSubwayArrive(subArrive, startName, lineNumber, wayCodeConvert); // API 호출 4
                             intLine = Integer.parseInt(lineNumber);
                         } else {
                             noInfoSubway(subArrive, subCongestion);
@@ -1101,10 +851,10 @@ public class TransServiceImpl implements TransService {
                         String trainExp = btrainDTO.getTrainExp();      // 급행 여부
 
                         // 역 코드 추출(역 이름과 외부 ID 사용해서)
-                        String stationCode = getStationCode(startName, startID);
+                        String stationCode = getStationCode(startName, startID); // API 호출 5
 
                         // 출발역, 종착역 추출
-                        StationDTO stationDTO = getSubwayStartEndStation(stationCode, weekTag, trainExp, wayCode, hour, minute);
+                        StationDTO stationDTO = getSubwayStartEndStation(stationCode, trainExp, wayCode, hour, minute); // API 호출 6
                         String startStation = stationDTO.getStartStationName();
                         String endStation = stationDTO.getEndStationName();
 
@@ -1113,12 +863,13 @@ public class TransServiceImpl implements TransService {
                             String line = lineNumber.substring(3, 4);
                             // 열차 번호가 추출됐다면
                             if (trainNo != null) {
-                                CongestionDTO congestionDTO = addRealTimeSubwayCongestion(subCongestion, line, trainNo);
+                                CongestionDTO congestionDTO = new CongestionDTO(); //addRealTimeSubwayCongestion(subCongestion, line, trainNo);
+                                congestionDTO.setSuccess(true);
+                                congestionDTO.setCongestion(50);
                                 int subwayCongestion = congestionDTO.getCongestion();
                                 // 실시간 혼잡도 추출이 불가능하다면 통계성으로 추출
                                 if (!congestionDTO.isSuccess()) {
-                                    subwayCongestion = addSubwayCongestion(subCongestion, startID, startStation,
-                                            endStation, hour, minute, trainExp, wayCodeConvert);
+                                    subwayCongestion = 10; //addSubwayCongestion(subCongestion, startID, startStation, endStation, hour, minute, trainExp, wayCodeConvert);
                                     // 지하철 혼잡도가 0이라면 no info 정보 추가
                                     if (subwayCongestion == -1 || subwayCongestion == 0) {
                                         continue;
@@ -1132,8 +883,7 @@ public class TransServiceImpl implements TransService {
                         else if (intLine == 1001 || (intLine >= 1004 && intLine <= 1009)) {
                             // 출발역과 도착역 전부 null이 아닐 경우 혼잡도 정보 추가
                             if (startStation != null && endStation != null) {
-                                int subwayCongestion = addSubwayCongestion(subCongestion, startID, startStation,
-                                        endStation, hour, minute, trainExp, wayCodeConvert);
+                                int subwayCongestion = 10; //addSubwayCongestion(subCongestion, startID, startStation, endStation, hour, minute, trainExp, wayCodeConvert);
                                 // 지하철 혼잡도가 0이라면 no info 정보 추가
                                 if (subwayCongestion == -1 || subwayCongestion == 0) {
                                     continue;
@@ -1179,10 +929,9 @@ public class TransServiceImpl implements TransService {
             }
             pathIndex++;
         }
-        return pathArray.toPrettyString();*/
+        return pathArray.toPrettyString();
     }
 
-    // -----------------------------------------------------------------------------------------------------------------
     // ODSayLab API 활용 -> 교통수단 경로 데이터 받음
     private List<List<TransInfoDTO>> getAllPath(String sx, String sy, String ex, String ey) {
         String ODSAY_KEY = URLEncoder.encode(odsay_key, StandardCharsets.UTF_8);
@@ -1224,12 +973,12 @@ public class TransServiceImpl implements TransService {
         for (JsonNode path : result.at("/result").at("/path")) {
             ObjectNode pathNode = objectMapper.createObjectNode();
             List<TransInfoDTO> transList = new ArrayList<>();
-//            infoObject.add((ObjectNode) path.at("/info"));
+            infoObject.add((ObjectNode) path.at("/info"));
             String pathType = path.at("/pathType").asText();
             String pathTypeString = switch (pathType) {
                 case "1" -> "지하철";
                 case "2" -> "버스";
-                case "3" -> "혼합";
+                case "3" -> "버스 + 지하철";
                 default -> "unknown";
             };
             pathNode.put("pathType", pathTypeString);
@@ -1262,7 +1011,7 @@ public class TransServiceImpl implements TransService {
                 if (trafficType.equals("2")) {
                     BusInfoDTO busDTO = new BusInfoDTO();
                     busDTO.setTrafficType(trafficType);
-//                    subPathObject.add((ObjectNode) subPath);
+                    subPathObject.add((ObjectNode) subPath);
                     busDTO.setStartName(subPath.at("/startName").asText());
                     busDTO.setStartLocalStationID(subPath.at("/startLocalStationID").asText());
                     busDTO.setStartID(subPath.at("/startID").asText());
@@ -1290,7 +1039,7 @@ public class TransServiceImpl implements TransService {
                 } else if (trafficType.equals("1")) {
                     SubwayInfoDTO subDTO = new SubwayInfoDTO();
                     subDTO.setTrafficType(trafficType);
-//                    subPathObject.add((ObjectNode) subPath);
+                    subPathObject.add((ObjectNode) subPath);
                     subDTO.setStartName(subPath.at("/startName").asText());
                     subDTO.setStartID(subPath.at("/startID").asText());
                     subDTO.setWayCode(subPath.at("/wayCode").asText());
@@ -1334,16 +1083,17 @@ public class TransServiceImpl implements TransService {
             pathNode.set("subPath", subPathArray);
             pathArray.add(pathNode);
         }
-//        totalResult.set("path", pathArray);
+        totalResult.set("path", pathArray);
 //        LOGGER.info(totalResult.toPrettyString());
         LOGGER.info(pathArray.toPrettyString());
         return pathList;
     }
 
-    // ODSayLab API 사용 -> 버스 순번(staOrd) 데이터 받음
+    // 버스 순번 호출
     private String getBusStationSequence(String stationID, String routeIDs) {
         String ODSAY_KEY = URLEncoder.encode(odsay_key, StandardCharsets.UTF_8);
         Mono<String> results;
+
         try {
             results = apiWebClient
                     .get()
@@ -1380,9 +1130,9 @@ public class TransServiceImpl implements TransService {
         return stationSeq;
     }
 
-    // 공공데이터포털 사용 -> 혼잡도, 도착정보 데이터 받음
     private int addBusArriveAndCongestion(ArrayNode arrCon, String stId, String busRouteId, String ord) {
         String DATA_KEY = URLEncoder.encode(data_key, StandardCharsets.UTF_8);
+
         Mono<String> results;
         try {
             results = apiWebClient
@@ -1451,6 +1201,7 @@ public class TransServiceImpl implements TransService {
         return busAverage;
     }
 
+    // SK open API 사용 -> 실시간 지하철 혼잡도 정보 받음
     private CongestionDTO addRealTimeSubwayCongestion(ArrayNode subCon, String lineNumber, String trainNumber) {
         Mono<String> results;
         CongestionDTO congestionDTO = new CongestionDTO();
@@ -1502,8 +1253,8 @@ public class TransServiceImpl implements TransService {
     }
 
     // SK open API 사용 -> 지하철 혼잡도 정보 받음
-    private int addSubwayCongestion(ArrayNode subCon, String stationCode, String start, String end, String hour, String minute,
-                                    String trainExp, String wayCodeConvert) {
+    private int addSubwayCongestion(ArrayNode subCon, String stationCode, String start, String end, String
+            hour, String minute, String trainExp, String wayCodeConvert) {
         ObjectNode congestion = objectMapper.createObjectNode();
         Mono<String> results;
         try {
@@ -1635,8 +1386,14 @@ public class TransServiceImpl implements TransService {
         return btrainDTO;
     }
 
-    private StationDTO getSubwayStartEndStation(String stationCode, String weekTag, String trainExp,
+    // 지하철 기점 종점 구하기
+    private StationDTO getSubwayStartEndStation(String stationCode, String trainExp,
                                                 String updnLine, String hour, String minute) {
+
+        LocalDate today = LocalDate.now();
+        DayOfWeek day = today.getDayOfWeek();
+        String weekTag = dayMap.get(day.getDisplayName(TextStyle.SHORT, Locale.ENGLISH).toUpperCase());
+
         StationDTO stationDTO = new StationDTO();
         Mono<String> results;
         try {
@@ -1689,6 +1446,7 @@ public class TransServiceImpl implements TransService {
         return stationDTO;
     }
 
+    // 지하철역 코드 받기
     private String getStationCode(String stationName, String startID) {
         String stName = URLEncoder.encode(stationName, StandardCharsets.UTF_8);
         Mono<String> results;
@@ -1699,7 +1457,7 @@ public class TransServiceImpl implements TransService {
                             .scheme("http")
                             .host("openAPI.seoul.go.kr")
                             .port("8088")
-                            .path(subw_key + "/json/SearchInfoBySubwayNameService/1/100/" + stName)
+                            .path(subw_key + "/json/SearchInfoBySubwayNameService/1/5/" + stName)
                             .build(true)
                             .toUri()
                     )
